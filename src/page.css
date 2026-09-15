@@ -1,0 +1,135 @@
+/* Praxis — стилі, що впливають на сторінку-господаря.
+   Тут мінімум: зсув макета, маркер активної статті та бейдж у заголовку.
+   Уся панель живе в Shadow DOM і стилізується з rail.css. */
+
+:root {
+  --praxis-w: 404px;
+  --praxis-ease: cubic-bezier(.22, .72, .2, 1);
+}
+
+/* ---- зсув макета ------------------------------------------------------ */
+html.praxis-open #page {
+  margin-right: var(--praxis-w);
+  transition: margin-right .34s var(--praxis-ease);
+}
+html:not(.praxis-open) #page {
+  transition: margin-right .28s var(--praxis-ease);
+}
+html.praxis-open #gotop {
+  right: calc(var(--praxis-w) + 20px) !important;
+  transition: right .34s var(--praxis-ease);
+}
+html.praxis-open #cookieConsent { z-index: 5 !important; }
+
+@media (max-width: 1180px) {
+  html.praxis-open #page { margin-right: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html #page, html #gotop { transition: none !important; }
+}
+
+/* ---- маркер активної статті ------------------------------------------ */
+#article { position: relative; }
+
+.praxis-marker {
+  position: absolute;
+  left: -18px;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #4f46e5, color-mix(in oklab, #4f46e5 30%, transparent));
+  opacity: 0;
+  pointer-events: none;
+  transition: transform .30s var(--praxis-ease), height .30s var(--praxis-ease), opacity .2s linear;
+  will-change: transform, height;
+  z-index: 1;
+}
+.praxis-marker.is-on { opacity: 1; }
+.praxis-marker.is-pinned {
+  background: linear-gradient(180deg, #d97706, color-mix(in oklab, #d97706 40%, transparent));
+  width: 4px;
+}
+
+/* ---- бейдж у заголовку статті ---------------------------------------- */
+.praxis-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 9px;
+  padding: 1px 8px 1px 6px;
+  border: 1px solid color-mix(in oklab, #4f46e5 22%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklab, #4f46e5 6%, #fff);
+  color: #4338ca;
+  font: 600 11px/1.6 -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+  vertical-align: 2px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background .16s var(--praxis-ease), border-color .16s var(--praxis-ease),
+              color .16s var(--praxis-ease), transform .16s var(--praxis-ease);
+}
+.praxis-badge:hover {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+  transform: translateY(-1px);
+}
+.praxis-badge.is-active {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+}
+.praxis-badge--part {
+  font-size: 10.5px;
+  padding: 1px 7px 1px 5px;
+  opacity: .82;
+  vertical-align: 1px;
+}
+.praxis-badge--part:hover { opacity: 1; }
+
+.praxis-badge--hist {
+  border-color: color-mix(in oklab, #b45309 22%, transparent);
+  background: color-mix(in oklab, #b45309 6%, #fff);
+  color: #92400e;
+  font-size: 10.5px;
+  padding: 1px 7px;
+  vertical-align: 2px;
+}
+.praxis-badge--hist:hover { background: #b45309; border-color: #b45309; color: #fff; transform: translateY(-1px); }
+
+.praxis-badge.is-pinned {
+  background: #d97706;
+  border-color: #d97706;
+  color: #fff;
+}
+.praxis-badge__dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor;
+  opacity: .85;
+}
+.praxis-badge.has-departure .praxis-badge__dot {
+  background: #d97706;
+  box-shadow: 0 0 0 2px color-mix(in oklab, #d97706 25%, transparent);
+}
+.praxis-badge:hover .praxis-badge__dot,
+.praxis-badge.is-active .praxis-badge__dot { background: currentColor; box-shadow: none; }
+
+/* підсвічування заголовка, на який наведено картку в панелі */
+.praxis-flash {
+  animation: praxisFlash 1.6s var(--praxis-ease);
+  border-radius: 6px;
+}
+@keyframes praxisFlash {
+  0%, 55% { background: color-mix(in oklab, #4f46e5 16%, transparent);
+            box-shadow: 0 0 0 6px color-mix(in oklab, #4f46e5 16%, transparent); }
+  100%    { background: transparent; box-shadow: none; }
+}
+
+.praxis-echo {
+  background: color-mix(in oklab, #4f46e5 9%, transparent);
+  border-radius: 6px;
+  box-shadow: 0 0 0 4px color-mix(in oklab, #4f46e5 9%, transparent);
+  transition: background .2s var(--praxis-ease), box-shadow .2s var(--praxis-ease);
+}

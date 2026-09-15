@@ -1,0 +1,28 @@
+[Unit]
+Description=Praxis cards API (тестова вітрина практики ВС)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/praxis
+Environment=CORPUS_DB=/home/ubuntu/praxis/praxis.db
+Environment=LAW_DB=/home/ubuntu/praxis/praxis.db
+Environment=PRAXIS_TOKEN=…спільний ключ вітрини, не ідентифікує користувача…
+ExecStart=/usr/bin/python3 /home/ubuntu/praxis/cards_api.py --serve --host 127.0.0.1 --port 8788
+Restart=on-failure
+RestartSec=5
+# щоб тестовий сервіс не з'їв пам'ять у сусідів
+MemoryMax=512M
+CPUQuota=80%
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
+# ── /etc/systemd/system/praxis-cards.service.d/no-logs.conf ──
+[Service]
+# Нічого про запити не пишемо навіть випадково: stdout/stderr сервісу нікуди не йдуть.
+StandardOutput=null
+StandardError=null
+SyslogLevelPrefix=no
+LimitCORE=0
+PrivateTmp=true
