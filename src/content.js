@@ -1835,7 +1835,111 @@
   }
 
   /** Усе, що працює з даними. Викликається після згоди — з boot або з кнопки. */
+  /* ── примітки Ради ─────────────────────────────────────────────────
+   *
+   *  У тексті ПКУ 4 513 блоків у фігурних дужках виду «{Підпункт 134.1.1 …
+   *  доповнено абзацом тринадцятим згідно із Законом № 4112-IX від
+   *  04.12.2024}». Читати норму крізь них неможливо, але й викидати не можна:
+   *  іноді саме вони й потрібні.
+   *
+   *  Розмітка Ради тут зручна: примітка — це окремий абзац, а не вставка
+   *  всередині норми. Тож ми не чіпаємо текст статті взагалі — лише ховаємо
+   *  цілі абзаци й лишаємо на їх місці дрібну позначку. Якорі `<a name>`
+   *  всередині лишаються в DOM, тож посилання Ради не ламаються.
+   *
+   *  Три види, і поводитися з ними треба по-різному. Рішення Конституційного
+   *  Суду ховати не можна — це найцінніше, що буває в примітці.
+   */
+  const ANN_KIND = [
+    [/Конституційн/i,                          'court'],
+    [/набирає чинності|набрання чинності|вводиться в дію/i, 'force'],
+    [null,                                     'basis']
+  ];
+
+  const ANN_LABEL = {
+    basis: 'підстава зміни',
+    force: 'умова набрання чинності',
+    court: 'Конституційний Суд'
+  };
+
+  function annKind(text) {
+    for (const [rx, k] of ANN_KIND) if (!rx || rx.test(text)) return k;
+    return 'basis';
+  }
+
+  /** Групує абзаци-примітки: примітка може тягнутися на кілька абзаців. */
+  function annGroups() {
+    if (!root) return [];
+    const ps = [...root.querySelectorAll('p')];
+    const out = [];
+    let open = null;
+    for (const p of ps) {
+      const t = (p.textContent || '').trim();
+      if (!t) continue;
+      if (open) {
+        open.els.push(p);
+        open.text += ' ' + t;
+        if (t.endsWith('}')) { out.push(open); open = null; }
+        continue;
+      }
+      if (!t.startsWith('{')) continue;
+      const g = { els: [p], text: t };
+      if (t.endsWith('}')) out.push(g); else open = g;
+    }
+    if (open) out.push(open);            // незакрита дужка — краще згорнути, ніж лишити
+    return out;
+  }
+
+  /** Сусідні примітки одного виду — під одну позначку.
+   *  Інакше після абзацу виростає гребінець із трьох однакових чипів. */
+  function mergeAdjacent(groups) {
+    const out = [];
+    for (const g of groups) {
+      const prev = out[out.length - 1];
+      const last = prev && prev.els[prev.els.length - 1];
+      if (prev && prev.kind === g.kind && last && last.nextElementSibling === g.els[0]) {
+        prev.els.push(...g.els);
+        prev.text += ' ' + g.text;
+        prev.n++;
+      } else {
+        out.push({ ...g, n: 1 });
+      }
+    }
+    return out;
+  }
+
+  let annFolded = 0;
+
+  function foldAnnotations() {
+    if (annFolded) return;
+    const groups = mergeAdjacent(annGroups().map(g => ({ ...g, kind: annKind(g.text) })));
+    for (const g of groups) {
+      const kind = g.kind;
+      if (kind === 'court') {            // не ховаємо, а підсвічуємо
+        g.els.forEach(el => el.classList.add('praxis-ann-court'));
+        annFolded++;
+        continue;
+      }
+      const tag = document.createElement('p');
+      tag.className = 'praxis-ann-tag';
+      tag.dataset.kind = kind;
+      tag.textContent = g.n > 1
+        ? `${g.n} ${kind === 'basis' ? 'підстави зміни' : ANN_LABEL[kind]}`
+        : ANN_LABEL[kind];
+      tag.title = g.text.length > 400 ? g.text.slice(0, 400) + '…' : g.text;
+      tag.addEventListener('click', () => {
+        const on = tag.classList.toggle('is-open');
+        g.els.forEach(el => el.classList.toggle('praxis-ann-hidden', !on));
+        measure(); buildTicks(); drawThumb();
+      });
+      g.els[0].parentNode.insertBefore(tag, g.els[0]);
+      g.els.forEach(el => el.classList.add('praxis-ann-hidden'));
+      annFolded++;
+    }
+  }
+
   async function start() {
+    foldAnnotations();                   // до вимірювань: висота сторінки зміниться
     await loadCounts();
     mountBadges();
     loadVersions();

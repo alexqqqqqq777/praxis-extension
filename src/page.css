@@ -133,3 +133,27 @@ html.praxis-open #cookieConsent { z-index: 5 !important; }
   box-shadow: 0 0 0 4px color-mix(in oklab, #4f46e5 9%, transparent);
   transition: background .2s var(--praxis-ease), box-shadow .2s var(--praxis-ease);
 }
+
+/* ---- примітки Ради ---------------------------------------------------- */
+.praxis-ann-hidden { display: none !important; }
+
+.praxis-ann-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin: 2px 0 10px; padding: 1px 8px 1px 6px;
+  border: 1px solid #e0e0e8; border-radius: 999px;
+  background: #f6f6f9; color: #8a8a96;
+  font: 400 11px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
+  cursor: pointer; user-select: none;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.praxis-ann-tag::before { content: "›"; display: inline-block; transition: transform .15s; }
+.praxis-ann-tag.is-open::before { transform: rotate(90deg); }
+.praxis-ann-tag:hover { background: #eeeef4; color: #5c5c68; border-color: #d0d0da; }
+.praxis-ann-tag[data-kind="force"] { background: #fdf3e3; border-color: #f0dfc0; color: #b45309; }
+
+/* рішення Конституційного Суду не ховаємо — підсвічуємо */
+.praxis-ann-court {
+  border-left: 3px solid #4f46e5;
+  padding-left: 10px;
+  background: #f4f4ff;
+}
