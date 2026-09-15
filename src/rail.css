@@ -904,3 +904,22 @@ kbd {
 }
 .onmark__go:hover { opacity: 1; }
 .onmark__s { display: block; margin-top: 3px; opacity: .8; }
+
+
+/* технічні правки — згорнуті, але доступні */
+.tech { margin-top: 8px; }
+.tech__t {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 5px 0; border: 0; background: none;
+  font: inherit; font-size: 11px; color: var(--text-3);
+  text-align: left; cursor: pointer;
+}
+.tech__t:hover { color: var(--text-2); }
+.tech__ico { display: inline-block; transition: transform .15s; }
+.tech__t.is-open .tech__ico { transform: rotate(90deg); }
+.tech__body {
+  margin-top: 4px; padding-left: 10px;
+  border-left: 2px solid var(--line);
+  opacity: .75;
+}
+.tech__body .hunk { font-size: 11.5px; }

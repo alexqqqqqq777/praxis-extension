@@ -1000,6 +1000,25 @@
     return k.length ? k.join(' і ') : 'службові правки';
   }
 
+  /** Технічні правки: згорнуті, але доступні.
+   *
+   *  Ховати їх зовсім не можна — це текст закону, і юрист має право
+   *  переконатися сам, що ми відкинули саме дрібниці. Але й показувати
+   *  завжди не можна: у ст. 14 ПКУ їх вісімдесят дві на одну редакцію.
+   */
+  function techBlock(v, num) {
+    const n = v.technical;
+    const word = n === 1 ? 'технічна правка' : n < 5 ? 'технічні правки' : 'технічних правок';
+    const list = (v.tech_changes || []).map(ch => diffHTML(ch, num)).join('');
+    return `<div class="tech">
+        <button class="tech__t" data-act="tech" aria-expanded="false">
+          <span class="tech__ico">›</span>+ ${n} ${word}
+          <span class="ver__hint">${esc(techWhy(v))}</span>
+        </button>
+        ${list ? `<div class="tech__body" hidden>${list}</div>` : ''}
+      </div>`;
+  }
+
   function emptyVer(v, num) {
     if (S.part != null) {
       return `${normLabel(num, S.part)} у цій редакції не змінювалася`;
@@ -1157,9 +1176,7 @@
                 : `<div class="ver__note">${v.diff_from
                       ? `проти редакції від <b>${fmtDate(v.diff_from)}</b>: ${emptyVer(v, num)}`
                       : emptyVer(v, num)}</div>`}
-          ${v.technical
-            ? `<div class="ver__tech">+ ${v.technical} технічн${v.technical === 1 ? 'а правка' : 'і правки'}
-                 <span class="ver__hint">${esc(techWhy(v))}</span></div>` : ''}
+          ${v.technical ? techBlock(v, num) : ''}
           ${basis}
         </article>`;
     }).join('') + (hidden.length
@@ -1523,6 +1540,14 @@
         histOf.delete(shown() + '|' + (S.part == null ? '*' : S.part));
         ensureHistory(shown());
         render();
+        return;
+      }
+      if (a === 'tech') {
+        const body = act.parentElement.querySelector('.tech__body');
+        if (!body) return;
+        body.hidden = !body.hidden;
+        act.setAttribute('aria-expanded', String(!body.hidden));
+        act.classList.toggle('is-open', !body.hidden);
         return;
       }
       if (a === 'to-version') {
