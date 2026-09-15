@@ -1152,6 +1152,15 @@
           </div>`;
       }).join('');
 
+      // Поява й зникнення норми — це не «вставлено текст», а окрема подія.
+      // Кажемо про неї один раз, навіть якщо вилучення розсипалося на фрагменти.
+      const ev = [
+        ...(v.new_norms || []).map(k =>
+          `<div class="nev nev--new"><b>${esc(normLabel(num, k))}</b> — норми не було, додано</div>`),
+        ...(v.gone_norms || []).map(k =>
+          `<div class="nev nev--gone"><b>${esc(normLabel(num, k))}</b> — норму виключено</div>`)
+      ].join('');
+
       // З чим порівняно. Без цього рядка «було → стало» висить у повітрі:
       // незрозуміло, чи це різниця з попередньою редакцією, чи з першою.
       const base = v.diff_from
@@ -1172,7 +1181,7 @@
             : v.diff_skipped
               ? '<div class="ver__note">порівняння не рахували — це глибина понад 60 редакцій. Текст редакції можна відкрити за датою.</div>'
               : v.changes.length
-                ? base + v.changes.map(ch => diffHTML(ch, num)).join('')
+                ? base + ev + v.changes.map(ch => diffHTML(ch, num)).join('')
                 : `<div class="ver__note">${v.diff_from
                       ? `проти редакції від <b>${fmtDate(v.diff_from)}</b>: ${emptyVer(v, num)}`
                       : emptyVer(v, num)}</div>`}
