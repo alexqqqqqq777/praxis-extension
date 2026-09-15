@@ -981,7 +981,71 @@
 
   /** Фрагмент зміни клікабельний: веде до цієї норми в тексті закону.
    *  Для вилучених норм вести нікуди — кажемо про це прямо. */
+  /* Диф як режим рецензування у Word.
+   *
+   *  Сервер віддає зміну, розкладену по нормах, а всередині норми — речення.
+   *  Змінене речення показуємо ЦІЛКОМ, із закресленим старим і підкресленим
+   *  новим усередині. Саме цього бракувало: раніше юрист бачив «було:
+   *  затвердженого · стало: та/або до Переліку лікарських засобів…» і не
+   *  розумів, звідки в статті про податкові різниці взялися договори.
+   *
+   *  Незмінені речення лишаємо як контекст, але згортаємо довгі прогони —
+   *  інакше норма на три тисячі знаків витісняє саму правку.
+   */
+  const CTX_KEEP = 1;          // скільки незмінних речень лишати обабіч правки
+
+  function sentHTML(s) {
+    if (s.op === 'equal') return `<span class="sx">${esc(s.text)}</span>`;
+    if (s.op === 'insert') return `<ins class="sx">${esc(s.text)}</ins>`;
+    if (s.op === 'delete') return `<del class="sx">${esc(s.text)}</del>`;
+    return '<span class="sx">' + (s.parts || []).map(([op, t]) =>
+      op === '-' ? `<del>${esc(t)}</del>`
+        : op === '+' ? `<ins>${esc(t)}</ins>` : esc(t)).join('') + '</span>';
+  }
+
+  /** Згортає довгі прогони незмінного тексту в «…». */
+  function trimContext(sents) {
+    const keep = sents.map(s => s.op !== 'equal');
+    for (let i = 0; i < sents.length; i++) {
+      if (!keep[i]) continue;
+      for (let d = 1; d <= CTX_KEEP; d++) { keep[i - d] = keep[i - d] || i - d >= 0; keep[i + d] = keep[i + d] || i + d < sents.length; }
+    }
+    const out = [];
+    let skipped = 0;
+    sents.forEach((s, i) => {
+      if (keep[i]) {
+        if (skipped) { out.push({ op: 'gap', n: skipped }); skipped = 0; }
+        out.push(s);
+      } else skipped++;
+    });
+    if (skipped) out.push({ op: 'gap', n: skipped });
+    return out;
+  }
+
+  function normChangeHTML(ch, num) {
+    const label = ch.norm ? normLabel(num, ch.norm) : '';
+    if (ch.op === 'article_gone')
+      return `<div class="nev nev--gone"><b>Статтю виключено</b> з кодексу</div>`;
+    if (ch.op === 'article_back')
+      return `<div class="nev nev--new"><b>Статтю відновлено</b> в кодексі</div>`;
+    if (ch.op === 'new')
+      return `<div class="nchg nchg--new"><div class="nchg__h"><b>${esc(label)}</b> — норми не було, додано</div>
+                <div class="nchg__b"><ins class="sx">${esc(ch.text || '')}</ins></div></div>`;
+    if (ch.op === 'gone')
+      return `<div class="nchg nchg--gone"><div class="nchg__h"><b>${esc(label)}</b> — норму виключено</div>
+                <div class="nchg__b"><del class="sx">${esc(ch.text || '')}</del></div></div>`;
+    const body = trimContext(ch.sentences || []).map(s =>
+      s.op === 'gap'
+        ? `<span class="sx sx--gap" title="${s.n} речень без змін">…</span>`
+        : sentHTML(s)).join(' ');
+    return `<div class="nchg"><div class="nchg__h"><b>${esc(label)}</b></div>
+              <div class="nchg__b">${body}</div></div>`;
+  }
+
   function diffHTML(ch, num) {
+    if (ch.sentences || ch.op === 'new' || ch.op === 'gone'
+        || ch.op === 'article_gone' || ch.op === 'article_back')
+      return normChangeHTML(ch, num);
     const del = ch.was ? `<del>${esc(ch.was)}</del>` : '';
     const ins = ch.now ? `<ins>${esc(ch.now)}</ins>` : '';
     // «ч. 2», а не голе «2», інакше маркер зливається з текстом фрагмента
@@ -1203,7 +1267,10 @@
 
       // Поява й зникнення норми — це не «вставлено текст», а окрема подія.
       // Кажемо про неї один раз, навіть якщо вилучення розсипалося на фрагменти.
-      const ev = [
+      // У структурному дифі подія приходить самим фрагментом і малюється
+      // разом із текстом норми; окремі чипи потрібні лише плоскому запобіжнику.
+      const structural = (v.changes || []).some(c => c.sentences || c.op);
+      const ev = structural ? '' : [
         ...(v.new_norms || []).map(k =>
           `<div class="nev nev--new"><b>${esc(normLabel(num, k))}</b> — норми не було, додано</div>`),
         ...(v.gone_norms || []).map(k =>
