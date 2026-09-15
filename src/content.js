@@ -787,6 +787,7 @@
       <div class="empty__s">${esc(sub)}</div>
       ${near ? `<button class="empty__jump" data-goto="${esc(near)}">Стаття ${esc(near)} →</button>` : ''}
       ${action === 'retry' ? '<button class="empty__jump" data-act="retry">Спробувати ще раз</button>' : ''}
+      ${action === 'retry-history' ? '<button class="empty__jump" data-act="retry-history">Спробувати ще раз</button>' : ''}
       ${action === 'reset' ? '<button class="empty__jump" data-act="reset-all">Скинути всі фільтри</button>' : ''}
     </div>`;
   }
@@ -1005,7 +1006,19 @@
       listEl.innerHTML = skeletonHTML();
       return;
     }
-    if (rec.state === 'error' || !rec.versions || !rec.versions.length) {
+    // Не змогли завантажити — це не те саме, що «редакцій немає».
+    // Стаття 14 ПКУ має 73 редакції, і саме на ній запит найчастіше не встигає.
+    if (rec.state === 'error') {
+      countEl.textContent = '';
+      listEl.innerHTML = emptyHTML('Не вдалося завантажити історію',
+        rec.error === 'timeout'
+          ? 'Стаття велика, відповідь не встигла прийти. Спробуйте ще раз — '
+            + 'наступного разу буде швидше, вітрина її вже порахувала.'
+          : `Вітрина відповіла: ${rec.error}.`,
+        null, 'retry-history');
+      return;
+    }
+    if (!rec.versions || !rec.versions.length) {
       countEl.textContent = '';
       listEl.innerHTML = emptyHTML('Історії немає',
         'У базі законів немає редакцій цієї статті.', null);
@@ -1021,14 +1034,22 @@
            <button data-act="scope-all">усі зміни статті ${esc(num)}</button></div>`
       : '';
 
-    // майбутня редакція — попередження, якого немає в жодному сервісі
+    // Майбутня редакція — попередження, якого немає в жодному сервісі.
+    // Порад про те, що юристові робити зі своїми справами, тут не даємо:
+    // він читає і податковий, і цивільний кодекс, і що саме йому звіряти —
+    // не наша справа. Наша справа — сказати, що зміниться, і показати це.
     let banner = '';
     const fut = rec.versions.find(v => v.future);
     if (fut) {
+      const n = (fut.changes || []).length;
+      const what = n
+        ? `<button class="onmark__go" data-act="to-version" data-from="${esc(fut.valid_from)}">
+             показати ${n} ${n === 1 ? 'зміну' : n < 5 ? 'зміни' : 'змін'} →</button>`
+        : fut.technical
+          ? `<div class="onmark__s">Лише технічні правки — нумерація й пунктуація</div>`
+          : '';
       banner += `<div class="onmark onmark--warn">З <b>${fmtDate(fut.valid_from)}</b> набирає`
-        + ` чинності нова редакція${fut.changes && fut.changes.length
-            ? ` — змін: ${fut.changes.length}` : ''}. Договори, що діятимуть після цієї дати,`
-        + ` варто звіряти з нею.</div>`;
+        + ` чинності нова редакція.${what ? ' ' + what : ''}</div>`;
     }
 
     // порівняння двох дат
@@ -1095,8 +1116,15 @@
           </div>`;
       }).join('');
 
+      // З чим порівняно. Без цього рядка «було → стало» висить у повітрі:
+      // незрозуміло, чи це різниця з попередньою редакцією, чи з першою.
+      const base = v.diff_from
+        ? `<div class="ver__base">зміни проти редакції від <b>${fmtDate(v.diff_from)}</b></div>`
+        : '';
+
       return `
-        <article class="ver${onDateHit ? ' is-hit' : ''}" style="animation-delay:${Math.min(i, 6) * 26}ms">
+        <article class="ver${onDateHit ? ' is-hit' : ''}" data-from="${esc(v.valid_from)}"
+                 style="animation-delay:${Math.min(i, 6) * 26}ms">
           <div class="ver__head">
             <span class="ver__date">${fmtDate(v.valid_from)}</span>
             <span class="ver__to">${v.valid_to ? '— ' + fmtDate(v.valid_to)
@@ -1105,9 +1133,11 @@
           </div>
           ${v.first
             ? '<div class="ver__note">первинна редакція, з якої почалася стаття</div>'
-            : v.changes.length
-              ? v.changes.map(diffHTML).join('')
-              : `<div class="ver__note">${emptyVer(v, num)}</div>`}
+            : v.diff_skipped
+              ? '<div class="ver__note">порівняння не рахували — це глибина понад 60 редакцій. Текст редакції можна відкрити за датою.</div>'
+              : v.changes.length
+                ? base + v.changes.map(diffHTML).join('')
+                : base + `<div class="ver__note">${emptyVer(v, num)}</div>`}
           ${v.technical
             ? `<div class="ver__tech">+ ${v.technical} технічн${v.technical === 1 ? 'а правка' : 'і правки'}
                  <span class="ver__hint">перенумерація, пунктуація, службові мітки</span></div>` : ''}
@@ -1468,6 +1498,21 @@
         save();
         gate.hidden = true;
         start();
+        return;
+      }
+      if (a === 'retry-history') {
+        histOf.delete(shown() + '|' + (S.part == null ? '*' : S.part));
+        ensureHistory(shown());
+        render();
+        return;
+      }
+      if (a === 'to-version') {
+        const el = listEl.querySelector(`.ver[data-from="${act.dataset.from}"]`);
+        if (el) {
+          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          el.classList.add('is-hit');
+          setTimeout(() => el.classList.remove('is-hit'), 1600);
+        }
         return;
       }
       if (a === 'basis') {

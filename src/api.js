@@ -10,7 +10,9 @@
   // у розширенні адресу підставляє service worker (налаштування в попапі);
   // тут — лише для прев'ю, яке ходить у API напряму
   const BASE = window.__PRAXIS_API_BASE__ || 'http://127.0.0.1:8787';
-  const TIMEOUT = { counts: 12000, cards: 8000 };   // холодний агрегат по акту ≈ 8 с
+  // Холодний агрегат по акту ≈ 8 с. Історія ст. 14 ПКУ — 73 редакції з дифами,
+  // на холодну це десятки секунд; далі вітрина віддає з кешу за чверть секунди.
+  const TIMEOUT = { counts: 12000, cards: 8000, history: 30000 };
 
   const cache = new Map();
 
@@ -165,7 +167,7 @@
       if (cache.has(key)) return cache.get(key);
       const params = { act, article };
       if (part != null) params.part = part;
-      const d = await call('/history', params, TIMEOUT.counts);
+      const d = await call('/history', params, TIMEOUT.history);
       d.unverified = d.unverified || [];
       cache.set(key, d);
       return d;
