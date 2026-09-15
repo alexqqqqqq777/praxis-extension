@@ -9,6 +9,22 @@
   'use strict';
 
   const DEMO = window.__PRAXIS_DATA__ || { articles: {}, order: [], lawShort: '' };
+  // Версія застереження. Якщо текст зміниться по суті — підняти число,
+  // і згода спитається ще раз. Косметичні правки версію не міняють.
+  const DISCLAIMER_V = 1;
+  const DISCLAIMER_URL = 'https://github.com/alexqqqqqq777/praxis-extension/blob/main/DISCLAIMER.md';
+
+  /** Налаштування з локального сховища. Читаються один раз і ДО першого
+   *  мережевого запиту: у них лежить і згода на застереження. */
+  function readPrefs() {
+    return new Promise(res => {
+      try {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local)
+          chrome.storage.local.get('praxis', r => res((r && r.praxis) || {}));
+        else res({});
+      } catch (e) { res({}); }
+    });
+  }
   const API = window.__PRAXIS_API__;
   if (document.getElementById('praxis-host')) return;
 
@@ -98,9 +114,12 @@
     });
   }
 
-  // лічильники не залежать від DOM — тягнемо їх, поки Рада малює текст
-  // (API.counts кешує, тож пізніший loadCounts() візьме готове)
-  if (API) API.counts(ACT).catch(() => null);
+  // Лічильники не залежать від DOM — тягнемо їх, поки Рада малює текст
+  // (API.counts кешує, тож пізніший loadCounts() візьме готове). Але тільки
+  // якщо застереження вже прийнято: до згоди розширення в мережу не виходить
+  // взагалі, інакше галочка була б формальністю.
+  const prefs = await readPrefs();
+  if (API && prefs.agreed === DISCLAIMER_V) API.counts(ACT).catch(() => null);
 
   if (!await waitForArticles()) return;
   const arts = collectArticles();
@@ -172,6 +191,7 @@
     theme: 'auto',
     source: 'demo',          // 'live' — вітрина, 'demo' — набір із data.js, 'offline' — вітрина мовчить
     offlineReason: '',
+    agreed: 0,               // версія прийнятого застереження
     lawShort: DEMO.lawShort || '',
     active: null,
     peek: null,
@@ -313,6 +333,51 @@
   const mapEl = h(`<div class="map" title="прокрутка документа · позначки — статті з практикою">
       <div class="map__ticks"></div><div class="map__thumb"></div>
       <div class="map__tip" hidden></div></div>`);
+
+  /* Екран згоди. Показується один раз.
+   *
+   * Сенс не в тому, щоб зняти з себе відповідальність, а в тому, щоб сказати
+   * вголос дві речі, які юрист має знати до першого запиту: що номер статті
+   * і пошуковий рядок ідуть на сервер, і що першоджерело завжди поруч.
+   * Журналів ми не ведемо — але «не ведемо» це обіцянка, а те, що сервер у
+   * момент запиту бачить звернення, — факт. Про факти попереджають заздалегідь.
+   */
+  const gate = h(`
+    <div class="gate" hidden>
+      <div class="gate__box" role="dialog" aria-modal="true" aria-labelledby="gate-t">
+        <h2 class="gate__t" id="gate-t">Перш ніж почати</h2>
+
+        <p class="gate__p"><b>Що йде на сервер.</b> Щоб показати практику, розширення
+        питає вітрину даних: номер кодексу, номер статті чи її частини, обрані
+        фільтри — і пошуковий рядок, якщо ви ним скористаєтесь. Більше нічого:
+        ні імені, ні ідентифікатора, ні міток про вас.</p>
+
+        <p class="gate__p"><b>Чого ми не робимо.</b> Не ведемо журналу запитів, не
+        збираємо аналітики, не зберігаємо історію переглянутих статей. Код
+        відкритий — це можна перевірити, а не прийняти на віру.</p>
+
+        <p class="gate__p"><b>Про що варто знати чесно.</b> Будь-який сервер у момент
+        обробки запиту бачить звернення. Ми його нікуди не записуємо, але сама
+        можливість існує, поки дані лежать не у вас на комп'ютері. Якщо справа
+        чутлива — тримайте це на увазі.</p>
+
+        <p class="gate__p"><b>Praxis не замінює першоджерело.</b> Кожна картка веде на
+        оригінал рішення в ЄДРСР, кожна редакція статті — на закон-підставу на
+        сайті Ради. Посилайтеся в процесі на них, а не на нас.</p>
+
+        <label class="gate__ok">
+          <input type="checkbox" data-act="gate-check">
+          <span>Прочитав і розумію</span>
+        </label>
+
+        <div class="gate__acts">
+          <button class="gate__go" data-act="gate-accept" disabled>Далі</button>
+          <a class="gate__link" href="${DISCLAIMER_URL}" target="_blank" rel="noopener noreferrer">повний текст ↗</a>
+          <button class="gate__link gate__no" data-act="close">не зараз</button>
+        </div>
+      </div>
+    </div>`);
+  rail.appendChild(gate);
 
   rail.appendChild(mapEl);
   sh.appendChild(rail);
@@ -1298,7 +1363,7 @@
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local)
         chrome.storage.local.get('praxis', r => {
-          chrome.storage.local.set({ praxis: Object.assign({}, r.praxis, { open: S.open, theme: S.theme }) });
+          chrome.storage.local.set({ praxis: Object.assign({}, r.praxis, { open: S.open, theme: S.theme, agreed: S.agreed }) });
         });
     } catch (e) { }
   }
@@ -1397,6 +1462,13 @@
       if (a === 'scope-all') {
         S.part = null; S.partManual = true;
         ensureHistory(shown()); render(); return;
+      }
+      if (a === 'gate-accept') {
+        S.agreed = DISCLAIMER_V;
+        save();
+        gate.hidden = true;
+        start();
+        return;
       }
       if (a === 'basis') {
         const body = act.parentElement.querySelector('.bas__body');
@@ -1638,9 +1710,15 @@
   });
 
   /* ── 10. старт ────────────────────────────────────────────────────── */
+  gate.addEventListener('change', e => {
+    if (!e.target.matches('[data-act="gate-check"]')) return;
+    gate.querySelector('[data-act="gate-accept"]').disabled = !e.target.checked;
+  });
+
   async function boot(saved) {
     if (saved && typeof saved.open === 'boolean') S.open = saved.open;
     if (saved && saved.theme) S.theme = saved.theme;
+    if (saved && saved.agreed) S.agreed = saved.agreed;
 
     measure();
     applyTheme();
@@ -1649,6 +1727,17 @@
     fab.classList.toggle('is-hidden', S.open);
     render();
 
+    // До згоди не йдемо в мережу взагалі: перший запит має бути вже після того,
+    // як людина прочитала, що саме в ньому піде.
+    if (S.agreed !== DISCLAIMER_V) {
+      gate.hidden = false;
+      return;
+    }
+    await start();
+  }
+
+  /** Усе, що працює з даними. Викликається після згоди — з boot або з кнопки. */
+  async function start() {
     await loadCounts();
     mountBadges();
     loadVersions();
@@ -1661,17 +1750,19 @@
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
   }
 
+  boot(prefs);
+
+  // налаштування можуть змінитися з попапа, поки сторінка відкрита
   try {
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get('praxis', r => boot(r && r.praxis));
-      if (chrome.storage.onChanged) chrome.storage.onChanged.addListener(ch => {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+      chrome.storage.onChanged.addListener(ch => {
         if (!ch.praxis) return;
         const v = ch.praxis.newValue || {};
         if (typeof v.open === 'boolean' && v.open !== S.open) setOpen(v.open);
         if (v.theme && v.theme !== S.theme) { S.theme = v.theme; applyTheme(); }
       });
-    } else boot(null);
-  } catch (e) { boot(null); }
+    }
+  } catch (e) { }
 
   window.__PRAXIS__ = {
     S, arts, COUNTS, store, render, setOpen, measure, jumpTo, ensure,
