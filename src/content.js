@@ -954,10 +954,12 @@
 
   /** Фрагмент зміни клікабельний: веде до цієї норми в тексті закону.
    *  Для вилучених норм вести нікуди — кажемо про це прямо. */
-  function diffHTML(ch) {
+  function diffHTML(ch, num) {
     const del = ch.was ? `<del>${esc(ch.was)}</del>` : '';
     const ins = ch.now ? `<ins>${esc(ch.now)}</ins>` : '';
-    const chip = ch.norm ? `<span class="hunk__n">${esc(ch.norm)}</span>` : '';
+    // «ч. 2», а не голе «2», інакше маркер зливається з текстом фрагмента
+    const chip = ch.norm
+      ? `<span class="hunk__n">${esc(num ? normLabel(num, ch.norm) : ch.norm)}</span>` : '';
     return `<div class="hunk" data-hunk="${esc(ch.norm || '')}" data-op="${esc(ch.op)}"`
       + ` title="${ch.op === 'delete' ? 'норму вилучено з тексту' : 'показати цю норму в тексті'}">`
       + `${chip}${del}${ins}</div>`;
@@ -986,12 +988,23 @@
   }
 
   /** Чому в редакції нічого не показано — трьома різними причинами. */
+  const TECH_WHY = {
+    numbering: 'нумерація й пунктуація',
+    refs: 'оформлення посилань на акти'
+  };
+
+  /** «лише технічні» — але які саме. Юрист має розуміти, чого не побачив. */
+  function techWhy(v) {
+    const k = (v.tech_kinds || []).map(x => TECH_WHY[x]).filter(Boolean);
+    return k.length ? k.join(' і ') : 'службові правки';
+  }
+
   function emptyVer(v, num) {
     if (S.part != null) {
       return `${normLabel(num, S.part)} у цій редакції не змінювалася`;
     }
     if (v.technical) {
-      return 'змінилася лише нумерація або пунктуація';
+      return `змінилося лише ${techWhy(v)} — текст норми той самий`;
     }
     return 'текст статті не змінився — редакцію створено через правки в інших '
       + 'частинах акта або через переоформлення приміток';
@@ -1062,7 +1075,7 @@
              <div class="onmark__t">Різниця між ${fmtDate(cmp.from)} і ${fmtDate(cmp.to)}</div>
              <div class="onmark__s">редакції ${fmtDate(cmp.a.valid_from)} → ${fmtDate(cmp.b.valid_from)},
                поправок між ними: ${cmp.steps}</div>
-             ${cmp.changes.length ? cmp.changes.map(diffHTML).join('')
+             ${cmp.changes.length ? cmp.changes.map(ch => diffHTML(ch, num)).join('')
                : '<div class="ver__note">змістовних змін немає</div>'}
              ${cmp.technical ? `<div class="ver__tech">+ ${cmp.technical} технічних</div>` : ''}
            </div>`;
@@ -1136,11 +1149,13 @@
             : v.diff_skipped
               ? '<div class="ver__note">порівняння не рахували — це глибина понад 60 редакцій. Текст редакції можна відкрити за датою.</div>'
               : v.changes.length
-                ? base + v.changes.map(diffHTML).join('')
-                : base + `<div class="ver__note">${emptyVer(v, num)}</div>`}
+                ? base + v.changes.map(ch => diffHTML(ch, num)).join('')
+                : `<div class="ver__note">${v.diff_from
+                      ? `проти редакції від <b>${fmtDate(v.diff_from)}</b>: ${emptyVer(v, num)}`
+                      : emptyVer(v, num)}</div>`}
           ${v.technical
             ? `<div class="ver__tech">+ ${v.technical} технічн${v.technical === 1 ? 'а правка' : 'і правки'}
-                 <span class="ver__hint">перенумерація, пунктуація, службові мітки</span></div>` : ''}
+                 <span class="ver__hint">${esc(techWhy(v))}</span></div>` : ''}
           ${basis}
         </article>`;
     }).join('') + (hidden.length
