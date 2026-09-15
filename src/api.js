@@ -162,10 +162,12 @@
     },
 
     /** Історія редакцій статті (або однієї її норми) */
-    async history(act, article, part) {
-      const key = `hist:${act}:${article}:${part == null ? '*' : part}`;
+    /** Сторінка історії. Ст. 14 ПКУ — 73 редакції; усі одразу ніхто не читає,
+     *  а рахувати їх — десятки секунд, тож беремо вікнами. */
+    async history(act, article, part, offset = 0, limit = 6) {
+      const key = `hist:${act}:${article}:${part == null ? '*' : part}:${offset}:${limit}`;
       if (cache.has(key)) return cache.get(key);
-      const params = { act, article };
+      const params = { act, article, offset, limit };
       if (part != null) params.part = part;
       const d = await call('/history', params, TIMEOUT.history);
       d.unverified = d.unverified || [];

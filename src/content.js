@@ -626,15 +626,42 @@
     }).catch(() => cmpOf.delete(key));
   }
 
+  const HIST_PAGE = 6;
+
+  function histKey(num) { return num + '|' + (S.part == null ? '*' : S.part); }
+
   function ensureHistory(num) {
-    const key = num + '|' + (S.part == null ? '*' : S.part);
+    const key = histKey(num);
     if (!num || histOf.has(key) || !API) return;
     histOf.set(key, { state: 'loading' });
-    API.history(ACT, num, S.part).then(d => {
+    API.history(ACT, num, S.part, 0, HIST_PAGE).then(d => {
       histOf.set(key, { state: 'ready', ...d });
       if (shown() === num) render();
     }).catch(e => {
       histOf.set(key, { state: 'error', error: e.message });
+      if (shown() === num) render();
+    });
+  }
+
+  /** Догрузка наступного вікна редакцій — при дотику до кінця списку. */
+  function moreHistory(num) {
+    const key = histKey(num);
+    const rec = histOf.get(key);
+    if (!rec || rec.state !== 'ready' || !rec.has_more || rec.more || !API) return;
+    rec.more = true;
+    if (shown() === num) render();
+    API.history(ACT, num, S.part, rec.versions.length, HIST_PAGE).then(d => {
+      const cur = histOf.get(key);
+      if (!cur) return;
+      // може приїхати повторно після швидкої прокрутки — зшиваємо за датою
+      const seen = new Set(cur.versions.map(v => v.valid_from));
+      cur.versions = cur.versions.concat((d.versions || []).filter(v => !seen.has(v.valid_from)));
+      cur.has_more = d.has_more;
+      cur.more = false;
+      if (shown() === num) render();
+    }).catch(() => {
+      const cur = histOf.get(key);
+      if (cur) { cur.more = false; cur.moreError = true; }
       if (shown() === num) render();
     });
   }
@@ -769,8 +796,8 @@
       </article>`;
   }
 
-  function skeletonHTML() {
-    return [0, 1, 2].map(i => `
+  function skeletonHTML(n = 3) {
+    return Array.from({ length: n }, (_, i) => `
       <div class="skel" style="animation-delay:${i * 90}ms">
         <div class="skel__row" style="width:46%"></div>
         <div class="skel__row" style="width:32%"></div>
@@ -963,6 +990,28 @@
     return `<div class="hunk" data-hunk="${esc(ch.norm || '')}" data-op="${esc(ch.op)}"`
       + ` title="${ch.op === 'delete' ? 'норму вилучено з тексту' : 'показати цю норму в тексті'}">`
       + `${chip}${del}${ins}</div>`;
+  }
+
+  /* Роловер: коли хвіст списку входить у видиму частину панелі — тягнемо
+   * наступне вікно. Кнопка лишається для тих, хто прокручує ривками, і як
+   * запасний шлях, якщо спостерігач недоступний. */
+  let tailObs = null;
+
+  function watchTail() {
+    if (!tailObs) {
+      try {
+        tailObs = new IntersectionObserver(es => {
+          for (const e of es) {
+            if (!e.isIntersecting) continue;
+            const num = e.target.dataset.tail;
+            if (num) moreHistory(num);
+          }
+        }, { root: listEl, rootMargin: '400px 0px' });
+      } catch (err) { return; }
+    }
+    tailObs.disconnect();
+    const t = listEl.querySelector('.tail[data-tail]');
+    if (t) tailObs.observe(t);
   }
 
   /** Прокрутка до норми без зміни того, що показує панель. */
@@ -1194,7 +1243,20 @@
            не змінився</button>`
       : S.showRedundant && rec.versions.some(v => v.redundant)
         ? `<button class="more" data-act="show-redundant">Сховати редакції без змін тексту</button>`
-        : '');
+        : '')
+      // Догрузка: ст. 14 ПКУ — 73 редакції, рахувати їх усі на холодну це
+      // десятки секунд. Показуємо перші шість, решта підтягується, коли
+      // юрист дочитав до кінця списку.
+      + (rec.has_more
+          ? `<div class="tail" data-tail="${esc(num)}">${rec.more
+               ? skeletonHTML(1)
+               : `<button class="more" data-act="more-history">Ще редакції
+                    <span class="more__n">${rec.total - rec.versions.length}</span></button>`}</div>`
+          : rec.moreError
+            ? `<div class="tail"><button class="more" data-act="more-history">Не вдалося дозавантажити — ще раз</button></div>`
+            : '');
+
+    watchTail();
 
     // Примітки, позицію яких корпус не зміг підтвердити
     if (rec.unverified && rec.unverified.length) {
@@ -1551,6 +1613,7 @@
         render();
         return;
       }
+      if (a === 'more-history') { moreHistory(shown()); return; }
       if (a === 'tech') {
         const body = act.parentElement.querySelector('.tech__body');
         if (!body) return;

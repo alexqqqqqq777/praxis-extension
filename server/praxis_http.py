@@ -139,8 +139,16 @@ def make_handler(core, token: str, origins: list[str]):
                     if not act or not article:
                         return self._send(400, {'error': 'need act and article'})
                     part = q.get('part')
-                    return self._send(200, core.article_history(act, article,
-                                                                part[0] if part else None))
+                    # сторінками: ст. 14 ПКУ — 73 редакції, усі одразу ніхто не читає
+                    def num(name, default, lo, hi):
+                        try:
+                            return max(lo, min(hi, int(arg(name) or default)))
+                        except ValueError:
+                            return default
+                    return self._send(200, core.article_history(
+                        act, article, part[0] if part else None,
+                        offset=num('offset', 0, 0, 10000),
+                        limit=num('limit', 12, 1, 60)))
 
                 if u.path == '/act':
                     nreg = arg('nreg')
