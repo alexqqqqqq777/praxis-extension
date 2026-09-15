@@ -1226,7 +1226,7 @@
     } else if (rec.state === 'error') {
       countEl.textContent = '';
       listEl.innerHTML = emptyHTML('Бекенд не відповів',
-        `cards_api на ${API ? API.base : '127.0.0.1:8787'} — ${rec.error}. Перевірте, чи запущений сервіс.`,
+        `${API ? API.base : 'вітрина'} — ${rec.error}. Перевірте, чи запущений сервіс.`,
         null, 'retry');
     } else {
       const items = visibleItems(num);

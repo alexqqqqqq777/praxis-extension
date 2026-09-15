@@ -57,8 +57,13 @@ def main() -> int:
         json.dumps(m, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
     # адреса вітрини за замовчуванням — та сама, що в маніфесті
-    for f in (DIST / 'src' / 'background.js', DIST / 'src' / 'popup.js'):
-        t = f.read_text(encoding='utf-8').replace("'http://127.0.0.1:8787'", f"'{base}'")
+    for name in ('background.js', 'popup.js', 'api.js', 'content.js'):
+        f = DIST / 'src' / name
+        t = f.read_text(encoding='utf-8')
+        t = t.replace("'http://127.0.0.1:8787'", f"'{base}'")
+        # у релізі нема чого «запускати сервіс»: вітрина не на машині користувача
+        t = t.replace('Перевірте, чи запущений сервіс.',
+                      'Спробуйте пізніше або перевірте адресу в налаштуваннях.')
         f.write_text(t, encoding='utf-8')
 
     size = sum(p.stat().st_size for p in DIST.rglob('*') if p.is_file())
