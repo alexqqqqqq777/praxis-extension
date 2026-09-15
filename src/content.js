@@ -1023,7 +1023,7 @@
               ${m.name ? `<div class="bas__name">${esc(m.name)}</div>` : ''}
               <div class="bas__acts">
                 <button class="bas__btn" data-act="cite" data-cite="${esc('в редакції Закону ' + cite)}">копіювати цитату</button>
-                <a class="bas__btn" href="${RADA}${esc(b)}" target="_blank" rel="noopener">відкрити на Раді ↗</a>
+                <a class="bas__btn" href="${RADA}${esc(b)}" target="_blank" rel="noopener noreferrer">відкрити на Раді ↗</a>
                 ${m.changed > 1 ? `<span class="bas__more">цей закон змінив ще ${m.changed - 1} стат${m.changed - 1 === 1 ? 'тю' : 'ей'} цього кодексу</span>` : ''}
               </div>
             </div>
@@ -1103,7 +1103,7 @@
     }
 
     const SRC = {
-      live:    ['ЄДРСР', 'is-live', `Дані вітрини · акт ${ACT}`],
+      live:    ['ЄДРСР', 'is-live', `Дані вітрини · акт ${ACT}. Кожне рішення відкривається в реєстрі — будь-яку картку можна звірити з оригіналом.`],
       demo:    ['демо-дані', 'is-demo', 'Вітрина не відповідає. Показано демонстраційний набір: номери справ і формулювання вигадані.'],
       offline: ['немає звʼязку', 'is-off', `Вітрина не відповідає${S.offlineReason ? ' — ' + S.offlineReason : ''}. Нічого не вигадуємо: практики не показуємо.`]
     }[S.source] || SRC_FALLBACK;
