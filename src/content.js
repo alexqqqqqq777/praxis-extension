@@ -230,7 +230,6 @@
     part: null,              // null — уся стаття; '' — посилання без вказівки частини
     partManual: false,       // користувач сам обрав частину — не перебивати скролом
     partArt: null,           // у якій СТАТТІ обрано: за її межами вибір не діє
-    partsOpen: false,        // показати всі чипи, а не перші вісім
     query: '',
     searchOn: false,
     expanded: new Set()
@@ -242,7 +241,6 @@
   /** `стаття|частина` → {state:'loading'|'ready'|'error', items, found, error} */
   const store = new Map();
   /** номер статті → [{part, label, count, has_children}] — рівень, що показуємо */
-  const partsOf = new Map();
   /** `стаття|частина` → ланцюг предків для крихт */
   const pathOf = new Map();
   /** номер статті → фасети (розподіл за юрисдикцією) */
@@ -276,12 +274,16 @@
 
   const style = document.createElement('style');
   sh.appendChild(style);
+  // Якщо стилі не доїхали, панель не має лягати на сторінку чотирмастами
+  // пікселями сирих кнопок. Порожній catch саме це й дозволяв: юрист бачив
+  // зіпсовану сторінку Ради й не розумів, хто винен.
+  const CSS_FALLBACK = ':host{all:initial}.rail,.fab{display:none}';
   (async () => {
     let css = window.__PRAXIS_CSS__ || '';
     if (!css && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
-      try { css = await (await fetch(chrome.runtime.getURL('src/rail.css'))).text(); } catch (e) { }
+      try { css = await (await fetch(chrome.runtime.getURL('src/rail.css'))).text(); } catch (e) { css = ''; }
     }
-    style.textContent = css;
+    style.textContent = css || CSS_FALLBACK;
   })();
 
   const rail = h(`
@@ -464,12 +466,18 @@
   }
 
   /** Підвантажує картки статті (або окремої її частини), якщо їх ще немає. */
+  const ERR_HOLD = 15000;   // скільки не перепитувати вітрину після відмови
+
   function ensure(num, part) {
     if (!num || !COUNTS.has(num)) return;
     if (part === undefined) part = S.part;
     const key = pk(num, part);
     const rec = store.get(key);
     if (rec && rec.state !== 'error') return;
+    // Вітрина лежить — не ломитися в неї знову на кожну статтю під скролом.
+    // Без цієї паузи один прокрут ЦКУ давав сотні запитів поспіль, і кожен
+    // чекав власного тайм-ауту.
+    if (rec && rec.state === 'error' && Date.now() - (rec.at || 0) < ERR_HOLD) return;
 
     if (S.source === 'offline') return;
     if (S.source === 'demo') {
@@ -481,12 +489,11 @@
     store.set(key, { state: 'loading' });
     API.cards(ACT, num, CARD_LIMIT, part, qopts()).then(r => {
       store.set(key, { state: 'ready', items: r.items, found: r.found });
-      partsOf.set(num, r.parts || []);
       pathOf.set(key, r.path || []);
       facetsOf.set(num, r.facets || {});
       if (shown() === num) render();
     }).catch(e => {
-      store.set(key, { state: 'error', error: e.message });
+      store.set(key, { state: 'error', error: e.message, at: Date.now() });
       if (shown() === num) render();
     });
   }
@@ -519,7 +526,7 @@
 
       const b = h(`<span class="praxis-badge${vp ? ' has-departure' : ''}" data-praxis-art="${esc(num)}"
           role="button" tabindex="0"
-          title="${fmtNum(total)} рішень ВС тлумачать цю статтю${vp ? `, з них ${vp} — Великої Палати` : ''} · клік — закріпити">
+          title="${fmtNum(total)} рішень ВС тлумачать цю статтю${vp ? `, з них ${esc(vp)} — Великої Палати` : ''} · клік — закріпити">
           <span class="praxis-badge__dot"></span>ВС · ${fmtCompact(total)}</span>`);
       a.el.appendChild(document.createTextNode(' '));
       a.el.appendChild(b);
@@ -585,7 +592,7 @@
       const pick = e => {
         e.preventDefault(); e.stopPropagation();
         S.part = n.part; S.partManual = true; S.partArt = num;
-        S.filter = 'all'; S.expanded.clear();
+        S.expanded.clear();
         if (!S.open) setOpen(true);
         ensure(num); render();
         listEl.scrollTo({ top: 0, behavior: 'smooth' });
@@ -725,7 +732,7 @@
       return {
         cls: 'neg', label: `неактуальне${it.negative ? ' · ' + it.negative : ''}`,
         title: `Від висновку цієї справи відступили пізніші рішення ВС`
-          + `${it.negative ? ` — ${it.negative} раз` : ''}. Посилатися як на чинну позицію ризиковано.`
+          + `${it.negative ? ` — ${esc(it.negative)} раз` : ''}. Посилатися як на чинну позицію ризиковано.`
           + (it.note ? ' ' + it.note : '')
       };
     }
@@ -751,12 +758,12 @@
   function statusLines(it) {
     const out = [];
     if (it.overruledGc) out.push(['neg', 'від висновку відступила Велика Палата']);
-    if (it.negative) out.push(['neg', `від висновку відступили: ${it.negative}`]);
+    if (it.negative) out.push(['neg', `від висновку відступили: ${esc(it.negative)}`]);
     if (it.note) out.push(['note', it.note.replace(/^[a-z_]+:\s*/, '')]);
     if (it.status === 'overruled' && !it.negative) out.push(['neg', 'висновок скасовано пізнішою практикою']);
     if (it.law && it.law.stale) out.push(['stale', `рішення про редакцію статті від ${fmtDate(it.law.valid_from)}`]);
     if (it.kind === 'departure') out.push(['chg', 'саме відступило від попереднього висновку']);
-    if (it.affirmed) out.push(['ok', `висновок підтверджено: ${it.affirmed}`]);
+    if (it.affirmed) out.push(['ok', `висновок підтверджено: ${esc(it.affirmed)}`]);
     return out;
   }
 
@@ -776,11 +783,11 @@
     const stats = [];
     if (it.applied) stats.push(`<span>цитують <b>${fmtNum(it.applied)}</b> рішень`
       + (it.inPosition ? `, у мотивувальній <b>${fmtNum(it.inPosition)}</b>` : '')
-      + (it.appliedGc ? `, з них ВП <b>${it.appliedGc}</b>` : '') + `</span>`);
-    if (it.affirmed) stats.push(`<span>підтвердили <b>${it.affirmed}</b></span>`);
+      + (it.appliedGc ? `, з них ВП <b>${esc(it.appliedGc)}</b>` : '') + `</span>`);
+    if (it.affirmed) stats.push(`<span>підтвердили <b>${esc(it.affirmed)}</b></span>`);
     if (it.via && it.via.kind === 'context') {
       stats.push(`<span>виведено з контексту: термін <b>«${esc(it.via.term)}»</b> `
-        + `за ${it.via.distance} знаків від цитати</span>`);
+        + `за ${esc(it.via.distance)} знаків від цитати</span>`);
     } else if (it.via) {
       stats.push(`<span>посилання на <b>п. ${esc(it.via.point)}</b> відновлено з тексту рішення</span>`);
     }
@@ -844,8 +851,6 @@
       ${action === 'reset' ? '<button class="empty__jump" data-act="reset-all">Скинути всі фільтри</button>' : ''}
     </div>`;
   }
-
-  const CHIP_CAP = 8;
 
   /** Поточна норма — чипом у рядку статті, а не окремим рядом крихт.
    *  Вибір норми робиться бейджем у тексті, тож тут потрібно лише показати,
@@ -1110,7 +1115,7 @@
     const chip = ch.norm
       ? `<span class="hunk__n">${esc(num ? normLabel(num, ch.norm) : ch.norm)}</span>` : '';
     return `<div class="hunk" data-hunk="${esc(ch.norm || '')}" data-op="${esc(ch.op)}"`
-      + ` title="${ch.op === 'delete' ? 'норму вилучено з тексту' : 'показати цю норму в тексті'}">`
+      + ` title="${GONE_OPS.has(ch.op) ? 'норму вилучено з тексту' : 'показати цю норму в тексті'}">`
       + `${chip}${del}${ins}</div>`;
   }
 
@@ -1136,13 +1141,19 @@
     if (t) tailObs.observe(t);
   }
 
+  /* Дві мови операцій. Структурний диф по нормах каже 'gone', запасний
+   * плоский — 'delete' (так їх називає SequenceMatcher). Перевірка була
+   * тільки на 'delete', тож на основному шляху підказка «норму вилучено»
+   * не з'являлася жодного разу. */
+  const GONE_OPS = new Set(['delete', 'gone', 'article_gone']);
+
   /** Прокрутка до норми без зміни того, що показує панель. */
   function scrollToNorm(num, part, op) {
     const a = byNum.get(num);
     if (!a) return;
     measure();
     const n = part && norms.find(x => x.art === num && x.part === part);
-    if (!n && op === 'delete') {
+    if (!n && GONE_OPS.has(op)) {
       toast(`Норму ${part.includes('.') ? 'п. ' : 'ч. '}${part} вилучено — `
         + 'у чинному тексті її немає');
     }
@@ -1240,7 +1251,8 @@
         rec.error === 'timeout'
           ? 'Стаття велика, відповідь не встигла прийти. Спробуйте ще раз — '
             + 'наступного разу буде швидше, вітрина її вже порахувала.'
-          : `Вітрина відповіла: ${rec.error}.`,
+          // текст помилки приходить із мережі: в innerHTML лише екранованим
+          : `Вітрина відповіла: ${esc(rec.error)}.`,
         null, 'retry-history');
       return;
     }
@@ -1292,10 +1304,10 @@
         : `<div class="onmark onmark--cmp">
              <div class="onmark__t">Різниця між ${fmtDate(cmp.from)} і ${fmtDate(cmp.to)}</div>
              <div class="onmark__s">редакції ${fmtDate(cmp.a.valid_from)} → ${fmtDate(cmp.b.valid_from)},
-               поправок між ними: ${cmp.steps}</div>
+               поправок між ними: ${esc(cmp.steps)}</div>
              ${cmp.changes.length ? cmp.changes.map(ch => diffHTML(ch, num)).join('')
                : '<div class="ver__note">змістовних змін немає</div>'}
-             ${cmp.technical ? `<div class="ver__tech">+ ${cmp.technical} технічних</div>` : ''}
+             ${cmp.technical ? `<div class="ver__tech">+ ${esc(cmp.technical)} технічних</div>` : ''}
            </div>`;
     }
 
@@ -1454,9 +1466,7 @@
     const num = shown();
     if (num !== lastShown) {              // фільтр і розгорнуті картки — стан однієї статті
       lastShown = num;
-      S.filter = 'all';
       S.partManual = false;
-      S.partsOpen = false;
       S.expanded.clear();
     }
 
@@ -1711,8 +1721,6 @@
       S.part = pchip.dataset.p === '*' ? null : pchip.dataset.p;
       S.partManual = true;
       S.partArt = shown();
-      S.partsOpen = false;
-      S.filter = 'all';
       S.expanded.clear();
       ensure(shown());
       render();
@@ -1741,7 +1749,6 @@
       const a = act.dataset.act;
       if (a === 'close') { setOpen(false); return; }
       if (a === 'retry') { retry(shown()); return; }
-      if (a === 'more') { S.partsOpen = true; render(); return; }
       if (a === 'since') {
         S.since = S.since ? null : String(new Date().getFullYear() - 3);
         refetch(); return;
@@ -1856,7 +1863,11 @@
       if (card && (a === 'copy' || a === 'ext' || a === 'goto')) {
         e.stopPropagation();
         const rec = store.get(pk(card.dataset.art, S.part));
-        const it = rec && rec.items.find(x => card.dataset.id.endsWith(':' + (x.docId || x.caseNo)));
+        // Точний збіг, а не збіг хвоста: ідентифікатор складається з номера
+        // статті й номера справи, і «14:123456».endsWith(':3456') — саме той
+        // клас помилки, після якого юрист цитує чуже рішення.
+        const it = rec && rec.items.find(
+          x => card.dataset.art + ':' + (x.docId || x.caseNo) === card.dataset.id);
         if (!it) return;
         if (a === 'copy') {
           const txt = `${it.court}, постанова від ${fmtDate(it.date)} у справі № ${it.caseNo}`
@@ -1930,7 +1941,13 @@
     }, 400);
   });
   searchInput.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { S.query = ''; searchInput.value = ''; refetch(); }
+    // stopPropagation: інакше та сама клавіша доходить до слухача на документі
+    // і заразом знімає закріплення статті. Юрист чистив пошук — і втрачав те,
+    // що читав.
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      S.query = ''; searchInput.value = ''; refetch();
+    }
   });
 
   fab.addEventListener('click', () => setOpen(true));
@@ -2030,7 +2047,15 @@
   });
 
   document.addEventListener('keydown', e => {
-    if (e.altKey && (e.code === 'KeyP' || e.key === 'p' || e.key === 'з')) { e.preventDefault(); setOpen(!S.open); }
+    // Гаряча клавіша не діє, поки юрист пише. На macOS Alt+P дає «π», і
+    // безумовний preventDefault ламав уведення цього знака на всій Раді.
+    const t = e.target;
+    const typing = t && (t.isContentEditable
+      || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''));
+    if (!typing && e.altKey && !e.ctrlKey && !e.metaKey
+        && (e.code === 'KeyP' || e.key === 'p' || e.key === 'з')) {
+      e.preventDefault(); setOpen(!S.open);
+    }
     if (e.key === 'Escape' && (S.pinned || S.query)) {
       S.pinned = null; S.query = ''; searchInput.value = ''; ensure(shown()); render();
     }
@@ -2177,6 +2202,10 @@
   }
 
   async function start() {
+    // Єдине правило, що впливає на макет сторінки Ради (#article{position}),
+    // вмикається лише звідси — тобто вже після згоди. До неї розширення не
+    // змінює на сторінці нічого.
+    document.documentElement.classList.add('praxis-on');
     foldAnnotations();                   // до вимірювань: висота сторінки зміниться
     await loadCounts();
     mountBadges();
