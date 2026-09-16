@@ -31,6 +31,7 @@
 """
 import argparse
 import datetime
+import threading
 import hmac
 import json
 import os
@@ -59,8 +60,20 @@ def allow_origin(origin: str, allowed: list[str]) -> str | None:
     return None
 
 
-def make_handler(core, token: str, origins: list[str]):
-    """Збирає обробник під конкретний модуль вибірки."""
+def make_handler(core, token: str, origins: list[str], workers: int = 4):
+    """Збирає обробник під конкретний модуль вибірки.
+
+    `workers` — скільки запитів рахуються одночасно. Це не оптимізація, а
+    запобіжник: ThreadingHTTPServer робить потік на кожне зʼєднання, кожен
+    потік відкриває власне зʼєднання до SQLite зі своїм кешем сторінок. На
+    вітрині з базою 6,7 ГБ вісім одночасних запитів з'їдали памʼять понад
+    MemoryHigh, ядро починало гальмувати всю групу — і замість «повільно»
+    виходило «ніколи»: жоден із восьми не повертався за хвилину.
+
+    З обмежувачем зайві запити чекають у черзі й відповідають по черзі.
+    Повільно — але завжди.
+    """
+    gate = threading.BoundedSemaphore(max(1, workers))
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = 'HTTP/1.1'
@@ -113,14 +126,19 @@ def make_handler(core, token: str, origins: list[str]):
             u = urlparse(self.path)
             q = parse_qs(u.query)
             arg = lambda name: (q.get(name) or [''])[0].strip()
+            if u.path == '/health':                 # дешевий, у чергу не ставимо
+                return self._health(q)
+            with gate:
+                return self._route(u, q, arg)
+
+        def _health(self, q):
+            h = core.health()
+            return self._send(200, h if self._authorized(q) else {'ok': h.get('ok', False)})
+
+        def _route(self, u, q, arg):
             try:
                 if token and u.path != '/health' and not self._authorized(q):
                     return self._send(401, {'error': 'need key'})
-
-                if u.path == '/health':
-                    # без ключа — лише «живий/ні»: шлях до бази не показуємо нікому
-                    h = core.health()
-                    return self._send(200, h if self._authorized(q) else {'ok': h.get('ok', False)})
 
                 if u.path == '/articles':
                     act = arg('act')
@@ -223,13 +241,16 @@ def add_arguments(ap: argparse.ArgumentParser):
                     help='вимагати ключ (або змінна PRAXIS_TOKEN)')
 
 
-def serve(core, host: str, port: int, token: str = '', origins: list[str] | None = None):
+def serve(core, host: str, port: int, token: str = '', origins: list[str] | None = None,
+          workers: int = 0):
     if origins is None:
         origins = [o.strip() for o in os.environ.get('PRAXIS_ORIGINS', '').split(',') if o.strip()]
-    srv = ThreadingHTTPServer((host, port), make_handler(core, token, origins))
+    if not workers:
+        workers = int(os.environ.get('PRAXIS_WORKERS', '4') or 4)
+    srv = ThreadingHTTPServer((host, port), make_handler(core, token, origins, workers))
     srv.daemon_threads = True
     # єдине, що взагалі друкується, — рядок запуску; про запити не друкується нічого
-    print(f'cards_api → http://{host}:{port}', file=sys.stderr)
+    print(f'cards_api → http://{host}:{port}  (одночасних запитів: {workers})', file=sys.stderr)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
