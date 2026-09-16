@@ -963,6 +963,25 @@ kbd {
   font-size: 12.5px; line-height: 1.6; color: var(--text);
   overflow-wrap: anywhere;
 }
+.scope--none { background: var(--warn-bg); color: var(--warn); }
+
+.nchg__back {
+  margin: 2px 0 4px; padding: 3px 7px; border-radius: 4px;
+  background: var(--warn-bg); color: var(--warn);
+  font-size: 11px; line-height: 1.4;
+}
+
+/* Псевдотаблиця: портал малює її трубами й пробілами, тож ширина символу
+   має значення. Пропорційний шрифт тут перетворює перелік ставок на кашу. */
+.nchg__b--tbl {
+  white-space: pre;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.nchg__b--tbl del.sx, .nchg__b--tbl ins.sx { display: inline; margin: 0; padding: 0 1px; }
+
 .nchg__b del, .nchg__b ins { text-decoration: none; padding: 0 1px; border-radius: 2px; }
 .nchg__b del { background: var(--danger-bg); color: var(--danger); text-decoration: line-through; }
 .nchg__b ins { background: var(--ok-bg);     color: var(--ok);     text-decoration: underline; }

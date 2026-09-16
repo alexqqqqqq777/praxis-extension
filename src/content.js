@@ -229,6 +229,7 @@
     cmpDate: '',             // друга дата — порівняти дві редакції
     part: null,              // null — уся стаття; '' — посилання без вказівки частини
     partManual: false,       // користувач сам обрав частину — не перебивати скролом
+    partArt: null,           // у якій СТАТТІ обрано: за її межами вибір не діє
     partsOpen: false,        // показати всі чипи, а не перші вісім
     query: '',
     searchOn: false,
@@ -583,7 +584,7 @@
 
       const pick = e => {
         e.preventDefault(); e.stopPropagation();
-        S.part = n.part; S.partManual = true;
+        S.part = n.part; S.partManual = true; S.partArt = num;
         S.filter = 'all'; S.expanded.clear();
         if (!S.open) setOpen(true);
         ensure(num); render();
@@ -623,7 +624,7 @@
         // фільтрувала: «ця редакція не торкнулася обраної норми» при тому,
         // що нічого не обиралося.
         S.pinned = art.num; S.peek = null; S.mode = 'history';
-        S.part = null; S.partManual = true;
+        S.part = null; S.partManual = true; S.partArt = art.num;
         if (!S.open) setOpen(true);
         ensureHistory(art.num); render();
         listEl.scrollTo({ top: 0 });
@@ -644,6 +645,7 @@
     if (!num || !S.onDate || !S.cmpDate || cmpOf.has(key) || !API) return;
     cmpOf.set(key, { state: 'loading' });
     API.compare(ACT, num, S.onDate, S.cmpDate, S.part).then(d => {
+      if (d && d.norm_word) NORM_WORD = d.norm_word;
       cmpOf.set(key, { state: 'ready', ...d });
       if (shown() === num) render();
     }).catch(() => cmpOf.delete(key));
@@ -658,6 +660,7 @@
     if (!num || histOf.has(key) || !API) return;
     histOf.set(key, { state: 'loading' });
     API.history(ACT, num, S.part, 0, HIST_PAGE).then(d => {
+      if (d && d.norm_word) NORM_WORD = d.norm_word;
       histOf.set(key, { state: 'ready', ...d });
       if (shown() === num) render();
     }).catch(e => {
@@ -1075,12 +1078,26 @@
     if (ch.op === 'gone')
       return `<div class="nchg nchg--gone"><div class="nchg__h"><b>${esc(label)}</b> — норму виключено</div>
                 <div class="nchg__b"><del class="sx">${esc(ch.text || '')}</del></div></div>`;
+    // Псевдотаблиця (ставки акцизу, переліки кодів УКТ ЗЕД) намальована
+    // трубами й пробілами. Склеїти її рядки через пробіл — значить зруйнувати
+    // колонки: ставка опиниться під чужим кодом просто на екрані.
+    // Перенумерація: під цим номером тепер інша норма, а попередня зсунулася
+    // далі. Без цього рядка два записи поруч читаються як загадка.
+    const renum = ch.renumbered
+      ? `<div class="nchg__back">під цим номером тепер інша норма — попередня переїхала в ${esc(normLabel(num, ch.renumbered))}</div>`
+      : '';
+    // Наступна редакція повертає цей текст назад. Це буває і скасуванням
+    // поправки, тож нічого не ховаємо — просто попереджаємо.
+    const back = ch.reverted
+      ? `<div class="nchg__back">наступна редакція від ${fmtDate(ch.reverted)} повертає цей текст назад</div>`
+      : '';
+    const tbl = (ch.sentences || []).some(s => s.row);
     const body = trimContext(ch.sentences || []).map(s =>
       s.op === 'gap'
-        ? `<span class="sx sx--gap" title="${s.n} речень без змін">…</span>`
-        : sentHTML(s)).join(' ');
+        ? `<span class="sx sx--gap" title="${s.n} ${tbl ? 'рядків' : 'речень'} без змін">…</span>`
+        : sentHTML(s)).join(tbl ? '\n' : ' ');
     return `<div class="nchg"><div class="nchg__h"><b>${esc(label)}</b></div>
-              <div class="nchg__b">${body}</div></div>`;
+              ${renum}${back}<div class="nchg__b${tbl ? ' nchg__b--tbl' : ''}">${body}</div></div>`;
   }
 
   function diffHTML(ch, num) {
@@ -1135,10 +1152,21 @@
     flash(el);
   }
 
+  /** Як цей акт називає свої норми — каже сервер, а не здогад по рядку.
+   *
+   *  Раніше вирішувала крапка в ключі: є — «п.», немає — «ч.». У ПКУ
+   *  ст. 346-1 норми звуться просто «77», і підпис стрибав на «ч. 77»
+   *  посеред статті, де все інше — пункти.
+   */
+  let NORM_WORD = '';
+
   /** Людський підпис норми: ЦКУ «ч. 2», ПКУ «п. 140.5». */
   function normLabel(num, part) {
     if (part === '') return 'посилань без частини';
-    return (String(part).includes('.') ? 'п. ' : 'ч. ') + part;
+    const p = String(part);
+    if (p === '(вступ)') return 'вступної частини';
+    if (!/^[\d]/.test(p)) return p;        // літерні маркери підписувати нічим
+    return (NORM_WORD || (p.includes('.') ? 'п.' : 'ч.')) + ' ' + p;
   }
 
   /** Чому в редакції нічого не показано — трьома різними причинами. */
@@ -1147,7 +1175,8 @@
     refs: 'оформлення посилань на акти',
     symbols: 'заміна знаків — § замість «параграф», № замість N',
     glyphs: 'апострофи, тире й лапки іншого накреслення',
-    format: 'оформлення тексту'
+    format: 'оформлення тексту',
+    jitter: 'коливання написання — портал перевидає норму то так, то так'
   };
 
   /** «лише технічні» — але які саме. Юрист має розуміти, чого не побачив. */
@@ -1183,6 +1212,11 @@
       return 'текст норми той самий — змінилося лише оформлення';
     }
     if (v.technical) {
+      // Тремтіння знімка — не «те саме оформлення»: літера таки інша.
+      // Казати «текст той самий» тут було б неправдою.
+      const k = v.tech_kinds || [];
+      if (k.length === 1 && k[0] === 'jitter')
+        return 'правки законодавця не було — портал перевидав норму з іншим написанням';
       return `змінилося лише ${techWhy(v)} — текст норми той самий`;
     }
     return 'текст статті не змінився — редакцію створено через правки в інших '
@@ -1221,10 +1255,15 @@
 
     // Звуження до норми має бути видно: інакше половина карток порожня
     // без видимої причини
-    const scope = S.part != null
-      ? `<div class="scope">Показано лише зміни <b>${esc(normLabel(num, S.part))}</b>
-           <button data-act="scope-all">усі зміни статті ${esc(num)}</button></div>`
-      : '';
+    // «Не змінювалася» і «такої норми тут немає» — різні відповіді, і плутати
+    // їх не можна: юрист вирішить, що норма стоїть незмінною з 2003 року.
+    const scope = S.part == null ? ''
+      : rec.part_unknown
+        ? `<div class="scope scope--none">У статті ${esc(num)} немає
+             <b>${esc(normLabel(num, S.part))}</b> — ця норма з іншої статті
+             <button data-act="scope-all">показати зміни статті ${esc(num)}</button></div>`
+        : `<div class="scope">Показано лише зміни <b>${esc(normLabel(num, S.part))}</b>
+             <button data-act="scope-all">усі зміни статті ${esc(num)}</button></div>`;
 
     // Майбутня редакція — попередження, якого немає в жодному сервісі.
     // Порад про те, що юристові робити зі своїми справами, тут не даємо:
@@ -1671,6 +1710,7 @@
     if (pchip) {
       S.part = pchip.dataset.p === '*' ? null : pchip.dataset.p;
       S.partManual = true;
+      S.partArt = shown();
       S.partsOpen = false;
       S.filter = 'all';
       S.expanded.clear();
@@ -1717,7 +1757,7 @@
       if (a === 'clear-dates') { S.onDate = ''; S.cmpDate = ''; render(); return; }
       if (a === 'show-redundant') { S.showRedundant = !S.showRedundant; render(); return; }
       if (a === 'scope-all') {
-        S.part = null; S.partManual = true;
+        S.part = null; S.partManual = true; S.partArt = shown();
         ensureHistory(shown()); render(); return;
       }
       if (a === 'gate-accept') {
@@ -1913,7 +1953,7 @@
       if (n && n.top) { target = n.top; el = n.el; }
     }
     S.pinned = num; S.peek = null;
-    if (part) { S.part = part; S.partManual = true; }
+    if (part) { S.part = part; S.partManual = true; S.partArt = num; }
 
     window.scrollTo({ top: Math.max(0, target - window.innerHeight / 3), behavior: 'smooth' });
     flash(el);
@@ -1965,6 +2005,12 @@
       if (cur !== S.active) {
         S.active = cur;
         ensureNorms(cur);
+        // Обрана норма належить тій статті, в якій її обрали. Раніше вона
+        // їхала за юристом далі по тексту: обравши ч. 2 у ст. 203, він
+        // діставався ст. 204 і бачив історію її ч. 2, якої не обирав. У ПКУ
+        // виходило гірше — п. 140.5.9 у ст. 141 не існує взагалі, і панель
+        // впевнено повідомляла, що ця норма не змінювалася.
+        if (S.partManual && S.partArt !== cur) { S.partManual = false; S.partArt = null; }
         S.part = S.partManual ? S.part : curPart;
         ensure(cur); render();
       } else if (!S.partManual && curPart !== S.part) {
