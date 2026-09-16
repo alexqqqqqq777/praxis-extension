@@ -5,10 +5,27 @@ const apiEl = document.getElementById('api');
 const dotEl = document.getElementById('dot');
 const stateEl = document.getElementById('apiState');
 
+/** Адреса без ключа — те, що показуємо на екрані. */
+function shown(raw) {
+  try {
+    const u = new URL(raw);
+    u.search = '';
+    return u.origin + u.pathname.replace(/\/$/, '');
+  } catch (e) { return String(raw || '').split('?')[0]; }
+}
+
+/** Ключ, збережений для цієї адреси. */
+function keyOf(raw) {
+  try { return new URL(raw).searchParams.get('key') || ''; } catch (e) { return ''; }
+}
+
 function paint(s) {
   openEl.checked = !!s.open;
   [...themeEl.children].forEach(b => b.classList.toggle('on', b.dataset.v === s.theme));
-  if (document.activeElement !== apiEl) apiEl.value = s.apiBase || '';
+  // У полі — адреса без ключа. Показувати ключ ні до чого: він однаковий у
+  // всіх і нічого не каже юристові, зате потрапляє в перший-ліпший знімок
+  // екрана. Зберігається він окремо, див. обробник нижче.
+  if (document.activeElement !== apiEl) apiEl.value = shown(s.apiBase || '');
   probe(s.apiBase || D.apiBase);
 }
 
@@ -71,7 +88,15 @@ apiEl.addEventListener('input', () => {
       stateEl.textContent = 'приймається лише https або локальна адреса';
       return;
     }
-    put({ apiBase: v });
+    // Ключ у полі не показується, тож сам собою він туди й не потрапить. Якщо
+    // юрист лишив ту саму вітрину, ключ треба зберегти: інакше будь-яка правка
+    // в цьому полі мовчки ламала б розширення — вітрина почала б віддавати 401.
+    // Вписав іншу адресу — там діє її власний ключ (або ніякого).
+    chrome.storage.local.get('praxis', r => {
+      const cur = (r.praxis && r.praxis.apiBase) || D.apiBase;
+      const keep = !keyOf(v) && shown(cur) === shown(v) ? keyOf(cur) : '';
+      put({ apiBase: keep ? v + '?key=' + keep : v });
+    });
   }, 500);
 });
 themeEl.addEventListener('click', e => {

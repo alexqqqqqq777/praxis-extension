@@ -9,11 +9,25 @@
   • немає дозволів на 127.0.0.1 і localhost — вони потрібні лише розробнику,
     а рецензента магазину змушують питати, навіщо розширення ходить у локальну
     мережу;
-  • connect-src у CSP звужено до єдиної адреси вітрини.
+  • connect-src у CSP звужено до єдиної адреси вітрини;
+  • у збірку вшивається ключ доступу до вітрини — без нього свіжа установка
+    отримує 401 і не працює взагалі.
 
-Запуск: python3 tools/build-release.py [--base https://…]
+Про ключ прямо. Вшитий у розширення ключ **не є секретом**: будь-хто
+розпакує пакет і прочитає його за хвилину. Він робить рівно дві речі —
+не дає адресі вітрини бути відкритою навстіж для випадкового сканера і
+дає змогу відкликати доступ, перевидавши розширення. Секретом його ніде
+не називаємо.
+
+Ключ спільний для всіх установок — і це навмисно. «Ключ на встановлення»
+перетворив би його на стійкий ідентифікатор користувача, тобто на те
+саме, чого ми пообіцяли не мати (див. docs/PRIVACY-AUDIT.md, B5).
+
+Ключ у репозиторії не лежить: береться з PRAXIS_TOKEN або з --key.
+
+Запуск: PRAXIS_TOKEN=… python3 tools/build-release.py [--base https://…]
 """
-import argparse, json, pathlib, shutil, sys
+import argparse, json, os, pathlib, shutil, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DIST = ROOT / 'dist'
@@ -27,6 +41,8 @@ KEEP_SRC = ['api.js', 'background.js', 'content.js', 'page.css', 'popup.html',
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--base', default=DEFAULT_BASE, help='адреса вітрини')
+    ap.add_argument('--key', default=os.environ.get('PRAXIS_TOKEN', ''),
+                    help='ключ доступу до вітрини (або змінна PRAXIS_TOKEN)')
     a = ap.parse_args()
 
     base = a.base.rstrip('/')
@@ -34,6 +50,23 @@ def main() -> int:
         print('вітрина має бути https: інакше запити юриста підуть відкритим текстом',
               file=sys.stderr)
         return 1
+
+    # Без ключа збірка безглузда: вітрина віддасть 401, і свіжа установка не
+    # покаже жодної картки. Краще не зібратися зовсім, ніж зібрати зламане.
+    key = a.key.strip()
+    if '?key=' in base or '&key=' in base:
+        print('ключ передавайте через --key або PRAXIS_TOKEN, а не в --base',
+              file=sys.stderr)
+        return 1
+    if not key:
+        print('немає ключа: задайте PRAXIS_TOKEN або --key.\n'
+              'Без нього вітрина віддасть 401 і свіжа установка не працюватиме.',
+              file=sys.stderr)
+        return 1
+    if not key.isascii() or not key.isalnum():
+        print('ключ має бути з латинських літер і цифр', file=sys.stderr)
+        return 1
+    base = base + '?key=' + key
     # Адресу можна передати разом із ключем (…?key=…) — його підхопить
     # service worker і надішле заголовком. Але в host_permissions і CSP
     # має йти чисте походження: рядок запиту там неприпустимий, і Chrome
