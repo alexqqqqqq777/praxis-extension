@@ -1,3 +1,8 @@
+# УВАГА: бойовий токен у цьому файлі не зберігається. Один раз він сюди
+# потрапив і опинився в публічному репозиторії — ключ довелося ротувати.
+# Значення береться з /etc/systemd/system/praxis-cards.service на машині.
+# Ключ НЕ зберігається в репозиторії.
+
 [Unit]
 Description=Praxis cards API (тестова вітрина практики ВС)
 After=network.target
@@ -7,7 +12,7 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/praxis
 Environment=CORPUS_DB=/home/ubuntu/praxis/praxis.db
 Environment=LAW_DB=/home/ubuntu/praxis/praxis.db
-Environment=PRAXIS_TOKEN=KTKsx244amsRkTDatpNTFe_t
+Environment=PRAXIS_TOKEN=…спільний ключ вітрини, тут його немає…
 Environment=PRAXIS_WORKERS=2
 ExecStart=/usr/bin/python3 /home/ubuntu/praxis/cards_api.py --serve --host 127.0.0.1 --port 8788
 Restart=on-failure

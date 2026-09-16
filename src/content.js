@@ -1003,6 +1003,12 @@
   const CTX_KEEP = 1;          // скільки незмінних речень лишати обабіч правки
 
   function sentHTML(s) {
+    if (s.op === 'too_big') {
+      const kb = n => Math.round(n / 1024).toLocaleString('uk');
+      return `<div class="sx sx--big">Норма завелика для порівняння —
+        ${kb(s.chars_old)} КБ проти ${kb(s.chars_new)} КБ. Це зазвичай додаток-таблиця;
+        відкрийте текст на потрібну дату полем «на дату» вгорі.</div>`;
+    }
     if (s.op === 'equal') return `<span class="sx">${esc(s.text)}</span>`;
     if (s.op === 'insert') return `<ins class="sx">${esc(s.text)}</ins>`;
     if (s.op === 'delete') return `<del class="sx">${esc(s.text)}</del>`;
@@ -1036,6 +1042,11 @@
       return `<div class="nev nev--gone"><b>Статтю виключено</b> з кодексу</div>`;
     if (ch.op === 'article_back')
       return `<div class="nev nev--new"><b>Статтю відновлено</b> в кодексі</div>`;
+    if (ch.op === 'moved')
+      return `<div class="nchg nchg--moved"><div class="nchg__h">
+                <b>${esc(label)}</b> — норму не змінено, вона переїхала в
+                <b>${esc(ch.to ? normLabel(num, ch.to) : '—')}</b></div>
+              <div class="nchg__b"><span class="sx">${esc(ch.text || '')}</span></div></div>`;
     if (ch.op === 'new')
       return `<div class="nchg nchg--new"><div class="nchg__h"><b>${esc(label)}</b> — норми не було, додано</div>
                 <div class="nchg__b"><ins class="sx">${esc(ch.text || '')}</ins></div></div>`;
@@ -1051,7 +1062,7 @@
   }
 
   function diffHTML(ch, num) {
-    if (ch.sentences || ch.op === 'new' || ch.op === 'gone'
+    if (ch.sentences || ch.op === 'new' || ch.op === 'gone' || ch.op === 'moved'
         || ch.op === 'article_gone' || ch.op === 'article_back')
       return normChangeHTML(ch, num);
     const del = ch.was ? `<del>${esc(ch.was)}</del>` : '';

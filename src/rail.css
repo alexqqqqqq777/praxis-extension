@@ -979,3 +979,10 @@ kbd {
   padding: 0; border: 0; background: none; box-shadow: none;
 }
 .funnel--plain:hover { border-color: transparent; }
+.nchg--moved { border-color: var(--accent); }
+.nchg--moved .nchg__h b { color: var(--accent-2); }
+.sx--big {
+  padding: 7px 9px; border-radius: var(--r-s);
+  background: var(--warn-bg); color: var(--warn);
+  font-size: 11.5px; line-height: 1.5;
+}

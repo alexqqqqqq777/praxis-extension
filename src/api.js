@@ -16,6 +16,12 @@
 
   const cache = new Map();
 
+  /** Адреса вітрини без ключа — усе, що можна показувати на екрані. */
+  function safeShow(u) {
+    try { const x = new URL(u); x.search = ''; return x.origin + x.pathname.replace(/\/$/, ''); }
+    catch (e) { return String(u).split('?')[0]; }
+  }
+
   async function call(path, params, ms) {
     const qs = new URLSearchParams(params).toString();
 
@@ -30,13 +36,19 @@
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), ms);
     try {
+      // Ключ іде ЗАГОЛОВКОМ і тут теж. Раніше ця гілка копіювала ?key= з
+      // адреси прямо в URL запиту — і ключ разом із номером статті осідав у
+      // журналі кожного проміжного вузла. Гілка здавалася «лише для прев'ю»,
+      // але вона спрацьовує і в розширенні, коли content script лишився без
+      // chrome.runtime після оновлення.
       const b = new URL(BASE);
+      const key = b.searchParams.get('key') || '';
       const url = new URL(path, b.origin);
       new URLSearchParams(qs).forEach((v, k) => url.searchParams.set(k, v));
-      b.searchParams.forEach((v, k) => url.searchParams.set(k, v));
       const res = await fetch(url.toString(), {
         signal: ctl.signal, cache: 'no-store',
-        credentials: 'omit', referrerPolicy: 'no-referrer'
+        credentials: 'omit', referrerPolicy: 'no-referrer',
+        headers: key ? { 'X-Praxis-Key': key } : undefined
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return await res.json();
@@ -93,7 +105,9 @@
   }
 
   window.__PRAXIS_API__ = {
-    base: BASE,
+    // назовні віддаємо адресу БЕЗ ключа: цим полем панель підписує помилки,
+    // і ключ опинявся на екрані поверх тексту закону
+    base: safeShow(BASE),
 
     /** {articles: Map номер → [усього рішень, з них Великої Палати], law} */
     async counts(act) {
