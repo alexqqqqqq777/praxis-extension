@@ -34,7 +34,12 @@ def main() -> int:
         print('вітрина має бути https: інакше запити юриста підуть відкритим текстом',
               file=sys.stderr)
         return 1
-    host = base + '/*'
+    # Адресу можна передати разом із ключем (…?key=…) — його підхопить
+    # service worker і надішле заголовком. Але в host_permissions і CSP
+    # має йти чисте походження: рядок запиту там неприпустимий, і Chrome
+    # відхиляє такий маніфест.
+    origin = base.split('?', 1)[0].split('#', 1)[0].rstrip('/')
+    host = origin + '/*'
 
     if DIST.exists():
         shutil.rmtree(DIST)
@@ -50,7 +55,7 @@ def main() -> int:
     m['host_permissions'] = ['https://zakon.rada.gov.ua/*', host]
     m['content_security_policy'] = {'extension_pages':
         "script-src 'self'; object-src 'none'; "
-        f"connect-src {base}; "
+        f"connect-src {origin}; "
         "img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'"}
     m['content_scripts'][0]['js'] = [f'src/{n}' for n in ('api.js', 'content.js')]
     (DIST / 'manifest.json').write_text(
