@@ -973,3 +973,9 @@ kbd {
   border-radius: 999px; background: var(--line);
   color: var(--text-3); font-size: 11px; cursor: help;
 }
+
+/* у режимі історії «фільтри» стають рядом чипів, а не однією кнопкою */
+.funnel--plain {
+  padding: 0; border: 0; background: none; box-shadow: none;
+}
+.funnel--plain:hover { border-color: transparent; }

@@ -209,6 +209,7 @@
     mode: 'practice',        // 'history' — режим редакцій статті
     onDate: '',              // «покажи редакцію на цю дату»
     showRedundant: false,    // редакції-дублікати, де текст норми не змінився
+    onlyReal: true,          // ховати редакції без змістовних змін
     cmpDate: '',             // друга дата — порівняти дві редакції
     part: null,              // null — уся стаття; '' — посилання без вказівки частини
     partManual: false,       // користувач сам обрав частину — не перебивати скролом
@@ -860,9 +861,15 @@
         + `<span class="s is-on">Історія</span>`;
       funnelEl.classList.remove('is-on');
       const hasDates = !!(S.onDate || S.cmpDate);
-      funnelEl.hidden = !hasDates;
-      funnelEl.innerHTML = hasDates
-        ? `<button class="s" data-act="clear-dates">скинути дати</button>` : '';
+      // Перемикач «лише суттєві» — тут, а не лише в кінці списку: історія
+      // ст. 14 ПКУ це 73 редакції, і кнопку внизу юрист побачить нескоро.
+      funnelEl.hidden = false;
+      funnelEl.className = 'funnel funnel--plain';   // у режимі історії це ряд чипів, не кнопка
+      funnelEl.innerHTML =
+        `<button class="s${S.showRedundant ? '' : ' is-on'}" data-act="show-redundant"`
+        + ` title="сховати редакції, де змінилося лише оформлення, нумерація або підстава">`
+        + `лише суттєві</button>`
+        + (hasDates ? `<button class="s" data-act="clear-dates">скинути дати</button>` : '');
       // дати — окремим рядом: два поля в один рядок із перемикачем не влазять
       panelEl.hidden = false;
       panelEl.className = 'panel panel--dates';
@@ -876,6 +883,7 @@
       return;
     }
 
+    funnelEl.className = 'funnel';
     const byDate = S.sort === 'fresh' || S.sort === 'oldest';
     sortEl.innerHTML =
       `<button class="stairs${byDate ? ' is-on' : ''}" data-act="stairs"`
@@ -1230,8 +1238,15 @@
 
     // Редакції-дублікати ховаємо: корпус позначає їх сам, і по ст. 1029 ЦКУ
     // це три рядки з пʼяти. Чинну, майбутню й первинну не чіпаємо ніколи.
-    const hidden = rec.versions.filter(v =>
-      v.redundant && !v.current && !v.future && !v.first && !S.showRedundant);
+    // Редакція без змістовних змін: сам текст норми той самий, а відрізняється
+    // лише оформленням, нумерацією чи підставою. Таких у ЦКУ близько чверті —
+    // юрист гортає історію й бачить одне «змінилося лише оформлення».
+    //
+    // Чинну, майбутню й первинну не ховаємо ніколи: вони потрібні як опори,
+    // навіть якщо самі по собі нічого не змінили.
+    const empty = v => !v.first && !v.current && !v.future
+      && (v.redundant || v.same_text || (!(v.changes || []).length && !v.diff_skipped));
+    const hidden = rec.versions.filter(v => empty(v) && !S.showRedundant);
     const shownVers = rec.versions.filter(v => !hidden.includes(v));
 
     listEl.innerHTML = scope + banner + shownVers.map((v, i) => {
@@ -1306,10 +1321,10 @@
         </article>`;
     }).join('') + (hidden.length
       ? `<button class="more" data-act="show-redundant">Показати ще ${hidden.length}
-           редакці${hidden.length === 1 ? 'ю' : hidden.length < 5 ? 'ї' : 'й'}, де текст норми
-           не змінився</button>`
-      : S.showRedundant && rec.versions.some(v => v.redundant)
-        ? `<button class="more" data-act="show-redundant">Сховати редакції без змін тексту</button>`
+           редакці${hidden.length === 1 ? 'ю' : hidden.length < 5 ? 'ї' : 'й'} без змістовних
+           змін — оформлення, нумерація, підстава</button>`
+      : S.showRedundant && rec.versions.some(v => empty(v))
+        ? `<button class="more" data-act="show-redundant">Сховати редакції без змістовних змін</button>`
         : '')
       // Догрузка: ст. 14 ПКУ — 73 редакції, рахувати їх усі на холодну це
       // десятки секунд. Показуємо перші шість, решта підтягується, коли
