@@ -142,7 +142,11 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
         # ── маршрути ─────────────────────────────────────────────────────
         def do_GET(self):
             u = urlparse(self.path)
-            q = parse_qs(u.query)
+            # keep_blank_values: «part=» — це не відсутність частини, а
+            # окреме значення «посилання без вказівки частини». Без цього
+            # parse_qs викидав його, сервер бачив part=None і віддавав практику
+            # ВСІЄЇ статті — 2 264 картки там, де чип обіцяв 1 503.
+            q = parse_qs(u.query, keep_blank_values=True)
             arg = lambda name: (q.get(name) or [''])[0].strip()
             try:
                 if u.path == '/health':             # дешевий, у чергу не ставимо
@@ -187,7 +191,7 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
                         except ValueError:
                             return default
                     return self._send(200, core.article_history(
-                        act, article, part[0] if part else None,
+                        act, article, core.clean_part(part[0]) if part else None,
                         offset=num('offset', 0, 0, 10000),
                         limit=num('limit', 12, 1, 60)))
 
@@ -204,7 +208,7 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
                         return self._send(400, {'error': 'need act, article, from, to'})
                     part = q.get('part')
                     return self._send(200, core.compare_dates(act, article, fr, to,
-                                                              part[0] if part else None))
+                                                              core.clean_part(part[0]) if part else None))
 
                 if u.path == '/text':
                     act, article = arg('act'), arg('article')
@@ -235,12 +239,14 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
                     forms = tuple(int(x) for x in csv('forms')
                                   if x.isdigit() and int(x) in core.FORM_NAMES) or None
                     return self._send(200, core.get_cards(
-                        act, article, limit, part[0] if part else None,
+                        act, article, limit, core.clean_part(part[0]) if part else None,
                         sort=sort,
                         jk=[x for x in csv('jk') if x in core.JUSTICE],
                         since=arg('since') or None,
                         q=arg('q') or None,                 # пошуковий рядок юриста
-                        current_only=bool(q.get('current_only')),
+                        # bool() над списком parse_qs робив «=0» і «=false»
+                        # вмиканням фільтра: список ['0'] непорожній
+                        current_only=arg('current_only') in ('1', 'true', 'yes', 'on'),
                         courts=[x for x in csv('courts') if x in core.COURTS],
                         forms=forms,
                         flag=[x for x in csv('flag') if x in ('departure', 'actual')],
