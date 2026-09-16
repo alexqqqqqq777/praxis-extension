@@ -51,7 +51,21 @@ def main() -> int:
         if (ROOT / doc).exists():
             shutil.copy2(ROOT / doc, DIST / doc)
 
+    # Стилі панелі вшиваємо в content.js, а web_accessible_resources прибираємо.
+    #
+    # Інакше rail.css лежить за постійною адресою chrome-extension://<id>/…,
+    # і будь-який скрипт на сторінці Ради одним fetch() дізнається, що в цього
+    # відвідувача стоїть Praxis. На zakon.rada.gov.ua уже працює лічильник
+    # Google — тобто факт «цей юрист користується Praxis» їхав би третій
+    # стороні без жодного запиту до вітрини. PRIVACY.md обіцяє протилежне.
+    css = (ROOT / 'src' / 'rail.css').read_text(encoding='utf-8')
+    cj = DIST / 'src' / 'content.js'
+    cj.write_text('window.__PRAXIS_CSS__ = ' + json.dumps(css, ensure_ascii=False) + ';\n'
+                  + cj.read_text(encoding='utf-8'), encoding='utf-8')
+    (DIST / 'src' / 'rail.css').unlink(missing_ok=True)
+
     m = json.loads((ROOT / 'manifest.json').read_text(encoding='utf-8'))
+    m.pop('web_accessible_resources', None)
     m['host_permissions'] = ['https://zakon.rada.gov.ua/*', host]
     m['content_security_policy'] = {'extension_pages':
         "script-src 'self'; object-src 'none'; "

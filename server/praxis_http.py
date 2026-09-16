@@ -79,6 +79,7 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
         protocol_version = 'HTTP/1.1'
         server_version = 'cards_api'     # без версії: менше підказок сканерам
         sys_version = ''                 # і без «Python/3.12.7» у заголовку
+        timeout = 20                     # мовчазне зʼєднання не тримає потік вічно
 
         # ── журналу немає ────────────────────────────────────────────────
         def log_message(self, fmt, *args):
@@ -271,10 +272,56 @@ def serve(core, host: str, port: int, token: str = '', origins: list[str] | None
         origins = [o.strip() for o in os.environ.get('PRAXIS_ORIGINS', '').split(',') if o.strip()]
     if not workers:
         workers = int(os.environ.get('PRAXIS_WORKERS', '4') or 4)
-    srv = ThreadingHTTPServer((host, port), make_handler(core, token, origins, workers))
+    class Server(ThreadingHTTPServer):
+        """Стеля на кількість ЗʼЄДНАНЬ, а не лише на кількість запитів.
+
+        Семафор рахував запити, що виконуються, — і не рятував: памʼять тримає
+        потік. ThreadingHTTPServer робить потік на кожне зʼєднання, а кожен
+        потік відкриває власне зʼєднання до SQLite зі своїм кешем сторінок.
+        Сорок одночасних запитів піднімали RSS із 33 до 456 МБ при
+        MemoryMax=448M — тобто сервіс убивав себе сам, скільки б не стояло в
+        PRAXIS_WORKERS. Шістдесят мовчазних зʼєднань тримали потоки безстроково.
+
+        Тому рахуємо зʼєднання на вході й зайвим чесно відмовляємо.
+        """
+
+        daemon_threads = True
+        max_conns = max(8, workers * 4)
+
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._live = 0
+            self._lock = threading.Lock()
+
+        def process_request(self, request, client_address):
+            with self._lock:
+                over = self._live >= self.max_conns
+                if not over:
+                    self._live += 1
+            if over:
+                try:
+                    request.sendall(b'HTTP/1.1 503 Service Unavailable\r\n'
+                                    b'Content-Length: 0\r\nConnection: close\r\n\r\n')
+                except OSError:
+                    pass
+                self.shutdown_request(request)
+                return
+            super().process_request(request, client_address)
+
+        def shutdown_request(self, request):
+            super().shutdown_request(request)
+
+        def close_request(self, request):
+            with self._lock:
+                if self._live > 0:
+                    self._live -= 1
+            super().close_request(request)
+
+    srv = Server((host, port), make_handler(core, token, origins, workers))
     srv.daemon_threads = True
     # єдине, що взагалі друкується, — рядок запуску; про запити не друкується нічого
-    print(f'cards_api → http://{host}:{port}  (одночасних запитів: {workers})', file=sys.stderr)
+    print(f'cards_api → http://{host}:{port}  '
+          f'(запитів одночасно: {workers}, зʼєднань: {srv.max_conns})', file=sys.stderr)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

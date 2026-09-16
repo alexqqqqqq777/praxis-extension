@@ -41,7 +41,7 @@ async function probe(base) {
   } catch (e) {
     if (my !== probeSeq) return;
     dotEl.className = 'dot bad';
-    stateEl.textContent = 'не відповідає — панель покаже демо-дані';
+    stateEl.textContent = 'не відповідає — панель скаже про це прямо';
   } finally {
     clearTimeout(t);
   }

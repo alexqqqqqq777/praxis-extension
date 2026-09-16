@@ -8,9 +8,7 @@
   ],
   "host_permissions": [
     "https://zakon.rada.gov.ua/*",
-    "https://praxis.51-83-129-254.sslip.io/*",
-    "http://127.0.0.1/*",
-    "http://localhost/*"
+    "https://praxis.51-83-129-254.sslip.io/*"
   ],
   "action": {
     "default_popup": "src/popup.html",
@@ -33,7 +31,6 @@
         "https://zakon.rada.gov.ua/laws/show/*"
       ],
       "js": [
-        "src/data.js",
         "src/api.js",
         "src/content.js"
       ],
@@ -43,20 +40,10 @@
       "run_at": "document_idle"
     }
   ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "src/rail.css"
-      ],
-      "matches": [
-        "https://zakon.rada.gov.ua/*"
-      ]
-    }
-  ],
   "background": {
     "service_worker": "src/background.js"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://praxis.51-83-129-254.sslip.io http://127.0.0.1:* http://localhost:*; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://praxis.51-83-129-254.sslip.io; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'"
   }
 }
