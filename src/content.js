@@ -50,9 +50,24 @@
   };
 
   /** nreg акта з адреси: /laws/show/435-15#Text → 435-15 */
+  /* Номер акта з адреси.
+   *
+   *  Ловушка: у довоєнній нумерації номер сам містить скісну — «254к/96-вр»
+   *  (Конституція), «1234-2002-п». Регулярка, що різала по першій скісній,
+   *  давала «254к», вітрина не знала такого акта й віддавала порожньо, а
+   *  панель писала «немає звʼязку». Юрист відкривав Конституцію — найчастішу
+   *  сторінку Ради — і бачив, що сервіс не працює.
+   *
+   *  Другий сегмент беремо лише тоді, коли він схожий на продовження номера
+   *  («96-вр», «2002-п»), а не на суфікс сторінки («print», «ed20240101»).
+   */
   function actFromUrl() {
-    const m = /\/laws\/show\/([^/#?]+)/.exec(location.pathname);
-    return m ? decodeURIComponent(m[1]) : null;
+    const m = /\/laws\/show\/([^#?]+)/.exec(location.pathname);
+    if (!m) return null;
+    const seg = m[1].split('/').filter(Boolean).map(decodeURIComponent);
+    if (!seg.length) return null;
+    const tail = /^\d{2,4}-[a-zA-Zа-яіїєґА-ЯІЇЄҐ]{1,4}$/;
+    return seg[1] && tail.test(seg[1]) ? seg[0] + '/' + seg[1] : seg[0];
   }
 
   const ICON = {
@@ -191,6 +206,7 @@
     theme: 'auto',
     source: 'demo',          // 'live' — вітрина, 'demo' — набір із data.js, 'offline' — вітрина мовчить
     offlineReason: '',
+    answered: false,         // вітрина відповіла, навіть якщо даних немає
     agreed: 0,               // версія прийнятого застереження
     lawShort: DEMO.lawShort || '',
     active: null,
@@ -421,6 +437,7 @@
     if (API) {
       try {
         const d = await API.counts(ACT);
+        S.answered = true;                 // вітрина відповіла — питання лише в даних
         if (d.articles && d.articles.size) {
           S.source = 'live';
           S.lawShort = d.law || S.lawShort;
@@ -433,6 +450,11 @@
     }
     // Демо-набір є лише у збірці для розробки: у ньому вигадані номери справ,
     // тож у релізі його немає — і тоді чесно кажемо, що вітрина не відповідає.
+    // Порожня карта статей при чесній відповіді 200 — це не «немає звʼязку»,
+    // а «по цьому акту практики у вітрині немає». Раніше обидва випадки
+    // зливалися, і юрист на Конституції бачив «сервіс не відповідає» й ішов
+    // ламати налаштування.
+    if (S.answered) { S.source = 'nopractice'; return; }
     const hasDemo = ACT === DEMO.lawId || window.__PRAXIS_FORCE__;
     if (!hasDemo) { S.source = 'offline'; return; }
     S.source = 'demo';
@@ -535,7 +557,7 @@
    *  число рішень саме по цьому підпункту.
    */
   function ensureNorms(num) {
-    if (!num || normsOf.has(num) || S.source !== 'live' || !API) return;
+    if (!num || normsOf.has(num) || (S.source !== 'live' && S.source !== 'nopractice') || !API) return;
     normsOf.set(num, new Map());                 // щоб не смикати бекенд двічі
     API.norms(ACT, num).then(r => {
       normsOf.set(num, r.map);
@@ -577,7 +599,7 @@
   /** Скільки разів статтю переписували. Бейдж зʼявляється лише там, де
    *  редакцій більше однієї: 870 із 1383 статей ЦКУ не мінялися ніколи. */
   async function loadVersions() {
-    if (versionsMap || S.source !== 'live' || !API) return;
+    if (versionsMap || (S.source !== 'live' && S.source !== 'nopractice') || !API) return;
     try {
       const v = await API.versions(ACT);
       versionsMap = v.counts; futureMap = v.future;
@@ -1402,6 +1424,9 @@
     const SRC = {
       live:    ['ЄДРСР', 'is-live', `Дані вітрини · акт ${ACT}. Кожне рішення відкривається в реєстрі — будь-яку картку можна звірити з оригіналом.`],
       demo:    ['демо-дані', 'is-demo', 'Вітрина не відповідає. Показано демонстраційний набір: номери справ і формулювання вигадані.'],
+      nopractice: ['практики немає', 'is-off',
+                   `Вітрина відповіла, але практики по акту ${ACT} в ній немає. `
+                   + 'Історія редакцій статті працює.'],
       offline: ['немає звʼязку', 'is-off', `Вітрина не відповідає${S.offlineReason ? ' — ' + S.offlineReason : ''}. Нічого не вигадуємо: практики не показуємо.`]
     }[S.source] || SRC_FALLBACK;
     $('[data-slot="src"]').textContent = SRC[0];

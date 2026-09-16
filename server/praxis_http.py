@@ -87,6 +87,17 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
         def log_error(self, fmt, *args):
             return
 
+        def handle_error(self, request, client_address):
+            """І тут теж мовчимо.
+
+            log_message і log_error були порожні, а цей — ні: будь-який виняток
+            друкував у stderr трасування РАЗОМ з адресою клієнта. Докстрику
+            модуля стверджував, що запис «не формується в принципі», і це було
+            неправдою — рятував лише StandardError=null у systemd. На Windows,
+            у docker чи при запуску з консолі запис ішов би на екран.
+            """
+            return
+
         # ── відповідь ────────────────────────────────────────────────────
         def _cors(self):
             ok = allow_origin(self.headers.get('Origin', ''), origins)
@@ -119,17 +130,28 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
             if not token:
                 return True
             got = self.headers.get('X-Praxis-Key') or (q.get('key') or [''])[0]
-            return hmac.compare_digest(got, token)
+            # compare_digest на рядках вимагає ASCII: ключ із кирилицею кидав
+            # TypeError, і замість чесного 401 клієнт діставав 500, а на
+            # /health — обірване зʼєднання
+            try:
+                return hmac.compare_digest(got.encode('utf-8'), token.encode('utf-8'))
+            except (AttributeError, TypeError):
+                return False
 
         # ── маршрути ─────────────────────────────────────────────────────
         def do_GET(self):
             u = urlparse(self.path)
             q = parse_qs(u.query)
             arg = lambda name: (q.get(name) or [''])[0].strip()
-            if u.path == '/health':                 # дешевий, у чергу не ставимо
-                return self._health(q)
-            with gate:
-                return self._route(u, q, arg)
+            try:
+                if u.path == '/health':             # дешевий, у чергу не ставимо
+                    return self._health(q)
+                with gate:
+                    return self._route(u, q, arg)
+            except Exception as e:                  # noqa: BLE001
+                # /health лишався поза try: будь-яка помилка в ньому рвала
+                # зʼєднання замість відповіді
+                self._send(500, {'error': f'{type(e).__name__}'})
 
         def _health(self, q):
             h = core.health()
@@ -225,8 +247,10 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
 
                 self._send(404, {'error': 'not found'})
             except Exception as e:                            # noqa: BLE001
-                # текст помилки описує стан бази, а не користувача
-                self._send(500, {'error': f'{type(e).__name__}: {e}'})
+                # Клієнтові — лише тип помилки. Текст SQLite містив назви
+                # стовпців і уривки запиту; це не приватність користувача, але
+                # й показувати внутрішній устрій нема потреби.
+                self._send(500, {'error': type(e).__name__})
 
     return Handler
 
