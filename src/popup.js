@@ -19,6 +19,16 @@ function keyOf(raw) {
   try { return new URL(raw).searchParams.get('key') || ''; } catch (e) { return ''; }
 }
 
+/** Ключ для цієї адреси: збережений, а як його немає — вшитий у збірку,
+ *  але лише коли вітрина та сама. Дзеркало тієї ж логіки в service worker. */
+function keyFor(raw) {
+  const own = keyOf(raw);
+  if (own) return own;
+  try {
+    return new URL(raw).origin === new URL(D.apiBase).origin ? keyOf(D.apiBase) : '';
+  } catch (e) { return ''; }
+}
+
 function paint(s) {
   openEl.checked = !!s.open;
   [...themeEl.children].forEach(b => b.classList.toggle('on', b.dataset.v === s.theme));
@@ -40,7 +50,7 @@ async function probe(base) {
     // адресу можна вписати разом із ключем (http://host:8788?key=…):
     // ключ відокремлюємо й надсилаємо заголовком, а не в рядку запиту
     const u = new URL(base);
-    const key = u.searchParams.get('key') || '';
+    const key = keyFor(base);
     const url = new URL('/health', u.origin + u.pathname.replace(/\/$/, ''));
     const r = await fetch(url.toString(), {
       signal: ctl.signal, cache: 'no-store', credentials: 'omit',
@@ -94,7 +104,7 @@ apiEl.addEventListener('input', () => {
     // Вписав іншу адресу — там діє її власний ключ (або ніякого).
     chrome.storage.local.get('praxis', r => {
       const cur = (r.praxis && r.praxis.apiBase) || D.apiBase;
-      const keep = !keyOf(v) && shown(cur) === shown(v) ? keyOf(cur) : '';
+      const keep = !keyOf(v) && shown(cur) === shown(v) ? keyFor(cur) : '';
       put({ apiBase: keep ? v + '?key=' + keep : v });
     });
   }, 500);

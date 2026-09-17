@@ -1901,10 +1901,19 @@
 
     if (S.source === 'offline') {
       countEl.textContent = '';
-      listEl.innerHTML = emptyHTML('Вітрина не відповідає',
-        `${API ? API.base : 'cards_api'} — ${S.offlineReason || 'немає звʼязку'}. `
-        + 'Адресу вітрини можна змінити в налаштуваннях розширення.',
-        null, 'retry');
+      // 401 — це не «не відповідає», це «відповіла й не прийняла ключ».
+      // Порада «змініть адресу» тут збивала б зі шляху: адреса правильна.
+      const noKey = /\b401\b/.test(String(S.offlineReason || ''));
+      listEl.innerHTML = noKey
+        ? emptyHTML('Вітрина не прийняла ключ',
+            `${API ? API.base : 'cards_api'} — HTTP 401. `
+            + 'Найчастіше це стара адреса в налаштуваннях розширення, збережена '
+            + 'до появи ключа. Відкрийте налаштування й упишіть адресу вітрини ще '
+            + 'раз — ключ підставиться сам.', null, 'retry')
+        : emptyHTML('Вітрина не відповідає',
+            `${API ? API.base : 'cards_api'} — ${S.offlineReason || 'немає звʼязку'}. `
+            + 'Адресу вітрини можна змінити в налаштуваннях розширення.',
+            null, 'retry');
     } else if (!num || !COUNTS.has(num)) {
       const near = nearestWithPractice(key);
       countEl.textContent = withPractice.length ? `${fmtNum(withPractice.length)} статей із практикою` : '';

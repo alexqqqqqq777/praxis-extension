@@ -31,7 +31,20 @@ async function settings() {
     const r = await chrome.storage.local.get('praxis');
     const raw = (r.praxis && r.praxis.apiBase) || DEFAULT_BASE;
     const u = safeBase(raw) || safeBase(DEFAULT_BASE);
-    const key = u.searchParams.get('key') || '';
+    let key = u.searchParams.get('key') || '';
+
+    // Збережена адреса без ключа — не привід віддавати юристові 401.
+    //
+    // Так і сталося: адресу вітрини вписали в налаштуваннях руками ще до того,
+    // як з'явився ключ. Збережене значення перекриває вшите, ключа в ньому
+    // немає — і кожен запит повертався 401 із порадою «змініть адресу», хоча
+    // адреса була правильна. Якщо походження те саме, що в збірці, беремо
+    // ключ збірки: він однаковий для всіх установок і нічого не ідентифікує.
+    // Інша адреса — інша вітрина, і ключ туди не поїде.
+    if (!key) {
+      const built = safeBase(DEFAULT_BASE);
+      if (built && built.origin === u.origin) key = built.searchParams.get('key') || '';
+    }
     u.search = '';                     // ключ в адресі не лишаємо
     return { base: u, key };
   } catch (e) {
