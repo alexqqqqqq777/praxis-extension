@@ -31,7 +31,7 @@
 
 Запуск: PRAXIS_TOKEN=… python3 tools/build-release.py [--base https://…]
 """
-import argparse, json, os, pathlib, shutil, subprocess, sys, urllib.error, urllib.request
+import argparse, datetime, json, os, pathlib, shutil, subprocess, sys, urllib.error, urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DIST = ROOT / 'dist'
@@ -243,6 +243,13 @@ def main() -> int:
 
     m = json.loads((ROOT / 'manifest.json').read_text(encoding='utf-8'))
     m.pop('web_accessible_resources', None)
+    # Коли збірку зроблено — видно на chrome://extensions поруч із версією.
+    #
+    # Півдня пішло на питання «а це вже оновлена збірка чи стара?»: і власник
+    # не міг відповісти, і я. Розпаковане розширення на вигляд однакове, а
+    # поводиться по-різному. Тепер дата відповідає замість здогадів.
+    stamp = datetime.datetime.now().strftime('%d.%m.%Y %H:%M')
+    m['version_name'] = m.get('version', '0') + ' · ' + stamp
     m['host_permissions'] = ['https://zakon.rada.gov.ua/*', host]
     m['content_security_policy'] = {'extension_pages':
         "script-src 'self'; object-src 'none'; "

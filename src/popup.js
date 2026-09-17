@@ -131,6 +131,15 @@ function put(patch) {
     chrome.storage.local.set({ praxis: next }, () => paint(next));
   });
 }
+// Та сама дата, що й на chrome://extensions, але тут її видно, не виходячи
+// з розширення: «моє оновлення доїхало?» — питання, на яке має відповідати
+// програма, а не пам'ять.
+try {
+  const mf = chrome.runtime.getManifest();
+  const el = document.getElementById('buildStamp');
+  if (el) el.textContent = 'збірка ' + (mf.version_name || mf.version);
+} catch (e) { /* поза розширенням просто нічого не показуємо */ }
+
 chrome.storage.local.get('praxis', r => paint(Object.assign({}, D, r.praxis)));
 openEl.addEventListener('change', () => put({ open: openEl.checked }));
 let apiT;
