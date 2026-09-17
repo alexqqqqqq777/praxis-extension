@@ -1076,6 +1076,10 @@ kbd {
   font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: .03em;
 }
 .sec__n--aside { opacity: .45; font-style: italic; }
+.zsplit--ritual { text-transform: none; letter-spacing: 0; display: flex; gap: 8px; align-items: baseline; }
+.zsplit--ritual button { all: unset; cursor: pointer; color: var(--accent); font-size: 11px; }
+.zsplit--ritual button:hover { text-decoration: underline; }
+.zfocus { color: var(--text-3); font-style: italic; cursor: help; }
 .eclink--none { color: var(--text-2); opacity: .6; cursor: help; }
 .zcard__ft { display: flex; gap: 8px; align-items: center; margin-top: 7px; font-size: 11px; flex-wrap: wrap; }
 .zcard__ft a, .zcard__ft button { color: var(--text-2); }

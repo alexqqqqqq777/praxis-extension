@@ -206,6 +206,7 @@
       if (o.cat) p.cat = o.cat;
       if (o.q) p.q = o.q;
       if (o.offset) p.offset = o.offset;
+      if (o.ritual) p.ritual = 1;      // показати й ритуальні згадки
       return call('/zir', p, TIMEOUT.cards);
     },
 

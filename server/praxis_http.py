@@ -260,11 +260,14 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
                     except ValueError:
                         offset = 0
                     st = arg('state')
+                    kw = {}
+                    if arg('ritual') in ('1', 'true'):   # показати й ритуальні згадки
+                        kw['ritual'] = True
                     return self._send(200, core.get_zir(
                         act, article, core.clean_part(part[0]) if part else None,
                         state=st if st in core.ZIR_STATES else 'actual',
                         cat=arg('cat') or None, q=arg('q') or None,
-                        limit=limit, offset=offset))
+                        limit=limit, offset=offset, **kw))
 
                 if u.path == '/cards':
                     act, article = arg('act'), arg('article')

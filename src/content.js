@@ -296,6 +296,7 @@
     partManual: false,       // користувач сам обрав частину — не перебивати скролом
     partArt: null,           // у якій СТАТТІ обрано: за її межами вибір не діє
     zirState: 'actual',      // коментар ДПС: актуальні / історичні / неактуальні
+    zirRitual: false,        // показувати й відповіді, де норма стоїть лише стандартним вступом
     query: '',
     searchOn: false,
     expanded: new Set()
@@ -620,8 +621,13 @@
           role="button" tabindex="0"
           title="${fmtNum(total)} рішень ВС тлумачать цю статтю${vp ? `, з них ${esc(vp)} — Великої Палати` : ''} · клік — закріпити">
           <span class="praxis-badge__dot"></span>ВС · ${fmtCompact(total)}</span>`);
-      a.el.appendChild(document.createTextNode(' '));
-      a.el.appendChild(b);
+      if (a.pp) {                       // пункт перехідних положень: абзац на пів екрана
+        a.el.insertBefore(document.createTextNode(' '), a.el.firstChild);
+        a.el.insertBefore(b, a.el.firstChild);
+      } else {
+        a.el.appendChild(document.createTextNode(' '));
+        a.el.appendChild(b);
+      }
       a.badge = b;
 
       // Бейдж ДПС — поруч, але іншим, холодним кольором: це джерело іншої
@@ -1045,7 +1051,7 @@
           ${stats.length ? `<div class="card__stat">${stats.join('')}</div>` : ''}
         </div></div>
         <div class="card__foot">
-          <div class="tags">${!it.via ? '' : it.via.kind === 'context'
+          <div class="tags">${!it.via || it.via.kind === 'transitional' ? '' : it.via.kind === 'context'
             ? `<span class="tag tag--ctx" title="Суд не назвав цей підпункт прямо. Звʼязок виведено з контексту: поруч (${it.via.distance} знаків) вжито термін «${esc(it.via.term)}», який визначає саме його.${it.via.confidence === 'medium' ? ' Термін загальний — перевірте.' : ''}">з контексту${it.via.confidence === 'medium' ? ' ?' : ''}</span>`
             : `<span class="tag tag--rec" title="Суд назвав цей підпункт у тексті рішення, але основний розбір посилань його не витяг. Звʼязок відновлено окремим проходом — це повноцінне посилання суду.">відновлене</span>`}${it.tags.map(t =>
             `<span class="tag${/відступ/i.test(t) ? ' tag--dep' : ''}">${esc(t)}</span>`).join('')}</div>
@@ -1748,7 +1754,7 @@
   const zirOf = new Map();
 
   function zirKey(num) {
-    return [num, S.part == null ? '*' : S.part, S.zirState, S.query.trim()].join('|');
+    return [num, S.part == null ? '*' : S.part, S.zirState + (S.zirRitual ? '+r' : ''), S.query.trim()].join('|');
   }
 
   function ensureZir(num) {
@@ -1758,7 +1764,7 @@
     if (rec && rec.state !== 'error') return;
     if (rec && rec.state === 'error' && Date.now() - (rec.at || 0) < ERR_HOLD) return;
     zirOf.set(key, { state: 'loading' });
-    API.zir(ACT, num, S.part, { state: S.zirState, q: S.query.trim() || null })
+    API.zir(ACT, num, S.part, { state: S.zirState, q: S.query.trim() || null, ritual: S.zirRitual })
       .then(d => { zirOf.set(key, { state: 'ready', ...d }); if (shown() === num) render(); })
       .catch(e => { zirOf.set(key, { state: 'error', error: e.message, at: Date.now() }); if (shown() === num) render(); });
   }
@@ -1859,8 +1865,14 @@
     return null;                       // актуальний — без позначки, як у практиці
   }
 
-  /** Відповідь саме про норму, а не така, що лише згадує її в тексті. */
-  function zirIsNamed(it) { return it.weight == null || it.weight >= 2; }
+  /** Відповідь саме про норму, а не така, що лише згадує її в тексті.
+   *  focus: 2 — норму названо в питанні; 1 — найближча за змістом (оцінка
+   *  корпусу, не факт — і підпис це каже); 0 — побіжно. Старий зріз: weight. */
+  function zirFocus(it) {
+    if (it.focus != null) return it.focus;
+    return it.weight == null ? 2 : (it.weight >= 2 ? 2 : 0);
+  }
+  function zirIsNamed(it) { return zirFocus(it) >= 1; }
 
   function zirHTML(it, num) {
     const open = S.expanded.has('z' + it.zir_id);
@@ -1884,6 +1896,7 @@
              <button class="zmore" data-act="zir-more">${open ? 'згорнути' : 'повна відповідь'}</button>` : ''}
         <div class="zcard__ft">
           ${it.point ? `<span class="zpoint">${esc(normLabel(num, it.point))}</span>` : ''}
+          ${zirFocus(it) === 1 ? `<span class="zfocus" title="Норму в питанні не названо; корпус вважає її темою відповіді за близькістю речення до питання. Це оцінка, а не факт.">найближча за змістом</span>` : ''}
           <a href="${esc(it.url)}" target="_blank" rel="noopener noreferrer">картка на zir.tax.gov.ua ↗</a>
           <button data-act="zir-cite" data-cite="${esc(cite)}">копіювати посилання</button>
         </div>
@@ -1944,11 +1957,22 @@
           direct.length ? 'Згадують побіжно' : 'Прямих відповідей про цю норму немає — лише побіжні згадки'
         } <span class="sec__n">${casual.length}</span></div>` : '';
 
+    // Ритуальні — «ПКУ регулює відносини… (п. 1.1 ст. 1)» у тілі відповіді
+    // про інше — не показуємо, як «Серявіна» в ЄСПЛ; але кажемо, скільки їх,
+    // і даємо подивитися.
+    const ritual = rec.ritual
+      ? `<div class="zsplit zsplit--ritual">ще ${rec.ritual} згадують норму лише стандартним вступом
+           <button data-act="zir-ritual">показати</button></div>`
+      : (rec.ritual_shown
+          ? `<div class="zsplit zsplit--ritual">разом із ритуальними згадками
+               <button data-act="zir-ritual">сховати</button></div>` : '');
+
     listEl.innerHTML = note + unchecked + more
       + (rec.items.length
           ? direct.map(it => zirHTML(it, num)).join('') + split + casual.map(it => zirHTML(it, num)).join('')
           : emptyHTML('Чинних роз’яснень немає',
-              'ДПС не має такого коментаря, прив’язаного до цієї норми.', null));
+              'ДПС не має такого коментаря, прив’язаного до цієї норми.', null))
+      + ritual;
   }
 
   /* ── розділ ЄСПЛ ──────────────────────────────────────────────────────
@@ -2011,7 +2035,11 @@
 
   function ecLinkHTML(c) {
     if (c.url) {
-      return `<a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">HUDOC ↗</a>`;
+      // url — український переклад, коли він є; цитувати суду юрист має
+      // оригінал, тож він поруч, коли відрізняється
+      return `<a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">HUDOC ↗</a>`
+        + (c.original_url
+            ? ` <a href="${esc(c.original_url)}" target="_blank" rel="noopener noreferrer" title="Оригінал рішення (англійською чи французькою) — його й цитують суду">оригінал ↗</a>` : '');
     }
     if (APPNO_RE.test(c.case_key || '')) {
       return `<a href="${esc(HUDOC_APPNO + c.case_key + '"]}')}" target="_blank" rel="noopener noreferrer"
@@ -2454,6 +2482,11 @@
         render(); return;
       }
       if (a === 'zir-state') { S.zirState = act.dataset.s; ensureZir(shown()); render(); return; }
+      if (a === 'zir-ritual') {
+        S.zirRitual = !S.zirRitual;
+        zirOf.delete(zirKey(shown()));      // інший набір — інший запит
+        ensureZir(shown()); render(); return;
+      }
       if (a === 'since-set') {
         const y = act.dataset.y || null;
         S.since = (S.since || null) === y ? null : y;   // повторний клік знімає
