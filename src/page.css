@@ -306,6 +306,7 @@ html.praxis-night .praxis-badge--hist {
   border-color: color-mix(in oklab, #e2a33c 32%, transparent);
 }
 html.praxis-night .praxis-badge:is(:hover, .is-active) { background: #6d68f0; border-color: #6d68f0; color: #fff; }
+html.praxis-night .praxis-badge--zir:hover { background: #0e8ba6; border-color: #0e8ba6; color: #fff; }
 html.praxis-night .praxis-badge--hist:hover { background: #b9791c; border-color: #b9791c; color: #fff; }
 html.praxis-night .praxis-badge.is-pinned { background: #c9821f; border-color: #c9821f; color: #fff; }
 html.praxis-night .praxis-ann-tag { background: #1c1d25; border-color: var(--pn-line); color: #85827c; }

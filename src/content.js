@@ -687,6 +687,9 @@
         e.preventDefault(); e.stopPropagation();
         S.pinned = S.pinned === num ? null : num;
         S.peek = null;
+        // на бейджі написано «ВС» — отже й відкриваємо практику ВС, навіть
+        // якщо панель стояла в розділі ДПС чи ЄСПЛ сусідньої статті
+        if (S.pinned && S.mode !== 'history') S.mode = 'practice';
         if (!S.open) setOpen(true);
         ensure(S.pinned || shown());
         render();
@@ -762,7 +765,17 @@
     API.norms(ACT, num).then(r => {
       normsOf.set(num, r.map);
       mountNormBadges(num, r.map);
+      mountNormZirBadges(num, r.zir);
     }).catch(() => normsOf.delete(num));
+  }
+
+  /** Який бейдж норми зараз обрано — у тексті видно так само, як у панелі.
+   *  Бейдж ВС горить у практиці й історії, бейдж ДПС — у розділі ДПС. */
+  function syncPartBadges() {
+    root.querySelectorAll('.praxis-badge--part').forEach(x =>
+      x.classList.toggle('is-pinned', x.dataset.praxisZirpart != null
+        ? S.mode === 'zir' && x.dataset.praxisZirpart === S.part
+        : S.mode !== 'zir' && S.mode !== 'ecthr' && x.dataset.praxisPart === S.part));
   }
 
   function mountNormBadges(num, map) {
@@ -784,6 +797,7 @@
       const pick = e => {
         e.preventDefault(); e.stopPropagation();
         S.part = n.part; S.partManual = true; S.partArt = num;
+        if (S.mode === 'zir' || S.mode === 'ecthr') S.mode = 'practice';   // бейдж «ВС» веде до ВС
         S.expanded.clear();
         if (!S.open) setOpen(true);
         ensure(num); render();
@@ -792,8 +806,51 @@
       b.addEventListener('click', pick);
       b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') pick(e); });
     }
-    root.querySelectorAll('.praxis-badge--part').forEach(x =>
-      x.classList.toggle('is-pinned', x.dataset.praxisPart === S.part));
+    syncPartBadges();
+  }
+
+  /** Бейдж ДПС біля пункту й підпункту, а не лише в заголовку.
+   *
+   *  Ст. 14 ПКУ — сорок екранів, ст. 164 — десять. Бейдж у заголовку каже
+   *  «ДПС щось писала про цю статтю» і лишає юриста шукати, про що саме.
+   *  Число тут те саме, що й на бейджі статті: відповіді, де норму названо в
+   *  питанні або вона найближча за змістом. Побіжні згадки — у підказці. */
+  function mountNormZirBadges(num, zmap) {
+    if (!zmap || !zmap.size) return;
+    const isPPart = !!(byNum.get(num) || {}).pp;
+    const seen = new Set();
+    for (const n of norms) {
+      if (n.art !== num || seen.has(n.part)) continue;
+      seen.add(n.part);
+      const z = zmap.get(n.part);
+      const named = zirNamed(z);
+      if (!named || n.el.querySelector('.praxis-badge--zir')) continue;
+      const aside = z[0] - named;
+      const zb = h(`<span class="praxis-badge praxis-badge--zir praxis-badge--part praxis-badge--zirpart"
+          data-praxis-zirpart="${esc(n.part)}" role="button" tabindex="0"
+          title="Роз'яснень ДПС (ЗІР) про цю норму: ${fmtNum(named)}${
+            aside ? `, ще ${fmtNum(aside)} згадують її побіжно` : ''}${
+            z[1] ? ` · чинних серед усіх: ${fmtNum(z[1])}` : ''} · клік — показати">
+          ДПС · ${fmtCompact(named)}</span>`);
+      if (isPPart) {
+        // підпункт перехідних положень — абзац на пів екрана: бейдж перед номером
+        n.el.insertBefore(document.createTextNode(' '), n.el.firstChild);
+        n.el.insertBefore(zb, n.el.firstChild);
+      } else {
+        n.el.appendChild(document.createTextNode(' '));
+        n.el.appendChild(zb);
+      }
+      const pick = e => {
+        e.preventDefault(); e.stopPropagation();
+        S.pinned = num; S.peek = null; S.mode = 'zir';
+        S.part = n.part; S.partManual = true; S.partArt = num;
+        if (!S.open) setOpen(true);
+        ensureZir(num); render();
+        listEl.scrollTo({ top: 0 });
+      };
+      zb.addEventListener('click', pick);
+      zb.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') pick(e); });
+    }
   }
 
   /** Скільки разів статтю переписували. Бейдж зʼявляється лише там, де
@@ -2229,6 +2286,7 @@
     if (S.mode === 'ecthr') {
       ensureEcthr(num);
       renderEcthr(num);
+      syncPartBadges();
       positionMarker(num);
       return;
     }
@@ -2236,6 +2294,7 @@
     if (S.mode === 'zir') {
       ensureZir(num);
       renderZir(num);
+      syncPartBadges();
       positionMarker(num);
       return;
     }
@@ -2247,6 +2306,7 @@
         const b = byNum.get(n).badge;
         if (b) b.classList.toggle('is-active', n === num && !S.pinned);
       }
+      syncPartBadges();
       positionMarker(num);
       return;
     }
@@ -2308,8 +2368,7 @@
       b.classList.toggle('is-active', n === num && !S.pinned);
       b.classList.toggle('is-pinned', n === S.pinned);
     }
-    root.querySelectorAll('.praxis-badge--part').forEach(x =>
-      x.classList.toggle('is-pinned', x.dataset.praxisPart === S.part));
+    syncPartBadges();
     positionMarker(num);
   }
 

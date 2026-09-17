@@ -138,7 +138,11 @@
       const key = `norms:${act}:${article}`;
       if (cache.has(key)) return cache.get(key);
       const d = await call('/norms', { act, article }, TIMEOUT.cards);
-      const out = { total: d.total || 0, map: new Map(Object.entries(d.norms || {})) };
+      // zir — [усього, чинних, про норму] тим самим ключем норми. Вітрина
+      // віддавала його давно, а тут він губився: бейдж ДПС стояв лише в
+      // заголовку статті, хоч би скільки екранів вона займала.
+      const out = { total: d.total || 0, map: new Map(Object.entries(d.norms || {})),
+                    zir: new Map(Object.entries(d.zir || {})) };
       cache.set(key, out);
       return out;
     },

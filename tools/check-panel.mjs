@@ -27,6 +27,11 @@ const PAYLOAD = {
   '/articles': {
     act: '435-15', law: 'ЦК', law_title: 'Цивільний кодекс України', since: 2022,
     articles: { '388': [2205, 47] }, zir: { '164': [8, 1] }, ecthr: { '388': 24 }
+  },
+  // лічильники по нормах статті: ВС і ДПС тим самим ключем
+  '/norms': {
+    act: '2755-17', article: '164', total: 119,
+    norms: { '164.2': 89 }, zir: { '164.2': [487, 143, 155] }
   }
 };
 
@@ -57,8 +62,14 @@ for (const [field, art] of [['articles', '388'], ['zir', '164'], ['ecthr', '388'
     bad.push(`${field}: вітрина віддала, до панелі не дійшло`);
   }
 }
+// Бейдж ДПС біля пункту: вітрина віддавала zir у /norms від самого початку,
+// а norms() його викидав — бейдж стояв лише в заголовку статті на десять екранів.
+const nm = await API.norms('2755-17', '164');
+if (!(nm.map instanceof Map) || !nm.map.has('164.2')) bad.push('norms: лічильники ВС по нормах не дійшли');
+if (!(nm.zir instanceof Map) || (nm.zir.get('164.2') || [])[2] !== 155) bad.push('norms.zir: лічильники ДПС по нормах не дійшли');
+
 if (bad.length) {
   for (const b of bad) console.error('  ЗБІЙ ' + b);
   process.exit(1);
 }
-console.log('  ok   лічильники доходять до панелі: articles, zir, ecthr  ·  ' + target);
+console.log('  ok   лічильники доходять до панелі: articles, zir, ecthr, norms.zir  ·  ' + target);
