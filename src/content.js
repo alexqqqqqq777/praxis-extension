@@ -581,9 +581,24 @@
   /** Підвантажує картки статті (або окремої її частини), якщо їх ще немає. */
   const ERR_HOLD = 15000;   // скільки не перепитувати вітрину після відмови
 
+  /** Обрана норма належить одній статті — тій, у якій її обрано чи прочитано.
+   *
+   *  Скрол-стеження веде S.part за текстом: читаєш п. 11.1 — панель звужена до
+   *  нього. Клік по бейджу сусідньої ст. 12 закріплював статтю, а норму лишав
+   *  стару. Панель питала у вітрини «п. 11.1 статті 12», та чесно відповідала
+   *  нулем, а чип підписував це «пп. 12.11.1» — норма, якої в кодексі немає.
+   *  Юрист бачив «ВС · 37» на вкладці й «Нічого не знайдено» під нею.
+   *
+   *  Тому норма завжди несе номер своєї статті (S.partArt), і все, що питає
+   *  вітрину чи малює панель, спершу звіряє його з показаною статтею. */
+  let peekStash = null;      // норма, обрана до наведення на сусідній бейдж
+  function fitPart(num) {
+    if (S.part != null && S.partArt !== num) { S.part = null; S.partManual = false; S.partArt = null; }
+  }
+
   function ensure(num, part) {
     if (!num || !COUNTS.has(num)) return;
-    if (part === undefined) part = S.part;
+    if (part === undefined) { fitPart(num); part = S.part; }
     const key = pk(num, part);
     const rec = store.get(key);
     if (rec && rec.state !== 'error') return;
@@ -654,8 +669,20 @@
       // ваги, і юрист має бачити різницю, не читаючи підписів.
       mountZirBadge(a, num);
 
-      b.addEventListener('mouseenter', () => { S.peek = num; ensure(num); ensureNorms(num); render(); });
-      b.addEventListener('mouseleave', () => { S.peek = null; render(); });
+      b.addEventListener('mouseenter', () => {
+        if (!S.peek) peekStash = { part: S.part, manual: S.partManual, art: S.partArt };
+        S.peek = num; ensure(num); ensureNorms(num); render();
+      });
+      b.addEventListener('mouseleave', () => {
+        S.peek = null;
+        // навів на сусідній бейдж — глянув на всю ту статтю; прибрав мишу —
+        // норма, яку читав до того, лишається обраною (fitPart її скинув)
+        if (peekStash && S.part == null && peekStash.art === shown()) {
+          S.part = peekStash.part; S.partManual = peekStash.manual; S.partArt = peekStash.art;
+        }
+        peekStash = null;
+        ensure(shown()); render();
+      });
       b.addEventListener('click', e => {
         e.preventDefault(); e.stopPropagation();
         S.pinned = S.pinned === num ? null : num;
@@ -828,6 +855,7 @@
   function histKey(num) { return num + '|' + (S.part == null ? '*' : S.part); }
 
   function ensureHistory(num) {
+    fitPart(num);
     const key = histKey(num);
     if (!num || histOf.has(key) || !API) return;
     histOf.set(key, { state: 'loading' });
@@ -1779,6 +1807,7 @@
 
   function ensureZir(num) {
     if (!num || !API) return;
+    fitPart(num);
     const key = zirKey(num);
     const rec = zirOf.get(key);
     if (rec && rec.state !== 'error') return;
@@ -2021,6 +2050,7 @@
 
   function ensureEcthr(num) {
     if (!num || !API) return;
+    fitPart(num);
     const key = ecKey(num);
     const rec = ecOf.get(key);
     if (rec && rec.state !== 'error') return;
@@ -2160,6 +2190,7 @@
 
   function render() {
     const num = shown();
+    fitPart(num);
     if (num !== lastShown) {              // фільтр і розгорнуті картки — стан однієї статті
       lastShown = num;
       S.partManual = false;
@@ -2843,10 +2874,10 @@
         // виходило гірше — п. 140.5.9 у ст. 141 не існує взагалі, і панель
         // впевнено повідомляла, що ця норма не змінювалася.
         if (S.partManual && S.partArt !== cur) { S.partManual = false; S.partArt = null; }
-        S.part = S.partManual ? S.part : curPart;
+        if (!S.partManual) { S.part = curPart; S.partArt = curPart != null ? cur : null; }
         ensure(cur); render();
       } else if (!S.partManual && curPart !== S.part) {
-        S.part = curPart;
+        S.part = curPart; S.partArt = curPart != null ? cur : null;
         ensure(cur); render();
       } else positionMarker(shown());
     };
