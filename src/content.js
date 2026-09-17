@@ -1727,6 +1727,10 @@
 
   function ecKey(num) { return num + '|' + (S.part == null ? '*' : S.part); }
 
+  // З якого року зріз містить практику: приходить у відповіді /ecthr.
+  // Потрібне, щоб чесно сказати, скільки рішень лишилося поза зрізом.
+  let EC_SINCE = null;
+
   function ensureEcthr(num) {
     if (!num || !API) return;
     const key = ecKey(num);
@@ -1735,7 +1739,8 @@
     if (rec && rec.state === 'error' && Date.now() - (rec.at || 0) < ERR_HOLD) return;
     ecOf.set(key, { state: 'loading' });
     API.ecthr(ACT, num, S.part)
-      .then(d => { ecOf.set(key, { state: 'ready', ...d }); if (shown() === num) render(); })
+      .then(d => { EC_SINCE = d.since || EC_SINCE;
+                   ecOf.set(key, { state: 'ready', ...d }); if (shown() === num) render(); })
       .catch(e => { ecOf.set(key, { state: 'error', error: e.message, at: Date.now() }); if (shown() === num) render(); });
   }
 
@@ -1773,10 +1778,14 @@
         ${c.findings && c.findings.length ? `<div class="ecfs">${ecFindings(c)}</div>` : ''}
         <div class="ectrust">${ecTrust(c)}</div>
         <div class="ecard__ft">
-          <button data-act="ec-docs">рішення ВС · ${c.docs}</button>
+          <button data-act="ec-docs"${c.docs ? '' : ' disabled'}>${
+            c.docs ? `рішення ВС · ${c.docs}` : 'рішень ВС у зрізі немає'}</button>
           <a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">HUDOC ↗</a>
           ${rada ? `<a href="${esc(rada)}" target="_blank" rel="noopener noreferrer">переклад на Раді ↗</a>` : ''}
         </div>
+        ${c.docs_corpus && c.docs_corpus > c.docs ? `<div class="ecblind">у корпусі
+           ще <b>${c.docs_corpus - c.docs}</b> таких рішень, раніших за
+           ${esc(String(EC_SINCE || ''))} рік — вони поза цим зрізом</div>` : ''}
         ${c.unseen_successors ? `<div class="ecblind">ще <b>${c.unseen_successors}</b>
            пізніших рішень ЄСПЛ спираються на цю справу; ВС їх не цитував</div>` : ''}
         ${open ? `<div class="ecdocs" data-slot="ecdocs-${esc(c.case_key)}">завантажую…</div>` : ''}
