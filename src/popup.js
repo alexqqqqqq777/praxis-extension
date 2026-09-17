@@ -4,6 +4,7 @@ const themeEl = document.getElementById('theme');
 const apiEl = document.getElementById('api');
 const dotEl = document.getElementById('dot');
 const stateEl = document.getElementById('apiState');
+const buildEl = document.getElementById('buildInfo');
 
 /** Адреса без ключа — те, що показуємо на екрані. */
 function shown(raw) {
@@ -29,6 +30,20 @@ function keyFor(raw) {
   } catch (e) { return ''; }
 }
 
+/** Звідки взявся ключ — словами, для рядка стану.
+ *
+ *  Досі цього не було видно ніде: ні в панелі, ні тут. Через це 401 двічі
+ *  пояснювали не тим — «немає звʼязку», «змініть адресу», — хоча звʼязок був,
+ *  а адреса правильна. Стан, від якого залежить робота, має бути на екрані. */
+function keySource(raw) {
+  if (keyOf(raw)) return 'збережений';
+  try {
+    const remote = new URL(raw).protocol === 'https:';
+    if (new URL(raw).origin === new URL(D.apiBase).origin && keyOf(D.apiBase)) return 'вшитий у збірку';
+    return remote ? '' : 'не потрібен';
+  } catch (e) { return ''; }
+}
+
 function paint(s) {
   openEl.checked = !!s.open;
   [...themeEl.children].forEach(b => b.classList.toggle('on', b.dataset.v === s.theme));
@@ -36,6 +51,16 @@ function paint(s) {
   // всіх і нічого не каже юристові, зате потрапляє в перший-ліпший знімок
   // екрана. Зберігається він окремо, див. обробник нижче.
   if (document.activeElement !== apiEl) apiEl.value = shown(s.apiBase || '');
+
+  // Яка це збірка — видно одразу. Інакше «розпаковане з dist» і «розпаковане
+  // з теки розробника» на вигляд однакові, а поводяться по-різному: у першій
+  // ключ вшитий, у другій його немає взагалі.
+  const built = shown(D.apiBase);
+  buildEl.textContent = keyOf(D.apiBase)
+    ? `збірка: ${built}, ключ усередині`
+    : `збірка для розробки: ${built}, ключа немає — до чужої вітрини допишіть ?key=…`;
+  buildEl.style.display = shown(s.apiBase || D.apiBase) === built && keyOf(D.apiBase) ? 'none' : '';
+
   probe(s.apiBase || D.apiBase);
 }
 
@@ -57,13 +82,24 @@ async function probe(base) {
       referrerPolicy: 'no-referrer',
       headers: key ? { 'X-Praxis-Key': key } : undefined
     });
+    if (r.status === 401) {
+      // Вітрина відповіла — і не прийняла ключ. Казати «не відповідає» тут
+      // означає послати юриста лагодити мережу замість адреси.
+      if (my !== probeSeq) return;
+      dotEl.className = 'dot bad';
+      stateEl.textContent = key
+        ? 'вітрина не прийняла ключ (401) — допишіть до адреси ?key=…'
+        : 'вітрина вимагає ключ (401) — допишіть до адреси ?key=…';
+      return;
+    }
     const d = await r.json();
     if (my !== probeSeq) return;
+    const src = keySource(base);
     dotEl.className = 'dot ' + (d.ok ? 'ok' : 'bad');
     stateEl.textContent = d.ok
       ? (d.norm_refs
           ? `на звʼязку · ${Number(d.norm_refs).toLocaleString('uk')} посилань на норми`
-          : 'на звʼязку')
+          : 'на звʼязку') + (src ? ` · ключ ${src}` : '')
       : 'сервіс відповідає, але база недоступна';
   } catch (e) {
     if (my !== probeSeq) return;
