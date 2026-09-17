@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Канарка даних. Щодня о 07:15 — після нічної пересборки зрізу о 06:30 —
+  ганяє той самий димовий прогін, але на ЖИВОМУ зрізі.
+
+  Навіщо окремо від релізу. Золоті числа диму («рівно 5 тремтінь у ЦКУ 338»)
+  — властивість даних. На релізі їх міряють на замороженій фікстурі, і червоне
+  там означає рівно одне: зламався код. Тут навпаки: код той самий, дані нові,
+  і червоне означає «подивись, що змінилося в корпусі». Воно нічого не блокує.
+
+  Каже лише про ЗМІНУ стану: було чисто — стало червоно, або навпаки. Стан —
+  у ~/praxis-canary.json. Канал сповіщень задається змінною PRAXIS_NOTIFY і
+  лишається рішенням власника.
+
+      cp deploy/macos/ua.praxis.canary.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ua.praxis.canary.plist
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>ua.praxis.canary</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/python3</string>
+		<string>/Users/kraiz/Desktop/TestVoid/practice-rail/tools/smoke.py</string>
+		<string>--mode</string>
+		<string>canary</string>
+		<string>--json</string>
+		<string>--state</string>
+		<string>/Users/kraiz/praxis-canary.json</string>
+	</array>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>7</integer>
+		<key>Minute</key>
+		<integer>15</integer>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/Users/kraiz/praxis-canary.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/kraiz/praxis-canary.log</string>
+</dict>
+</plist>

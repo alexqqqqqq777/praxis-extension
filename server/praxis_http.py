@@ -29,6 +29,11 @@
 
 Контракт core описаний у README.
 """
+# Анотації рядками: транспорт має запускатися й на старшому Python, який ще
+# не знає «str | None» у сигнатурі. Системний python3 на macOS — 3.9, і без
+# цього рядка файл на ньому просто не імпортується.
+from __future__ import annotations
+
 import argparse
 import datetime
 import threading

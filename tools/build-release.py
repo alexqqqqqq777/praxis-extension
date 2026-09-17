@@ -25,9 +25,13 @@
 
 Ключ у репозиторії не лежить: береться з PRAXIS_TOKEN або з --key.
 
+Перед збіркою — чотири перевірки, і кожна колись була дефектом: замикання
+(`nph`, 500 на кожен запит), компіляція на найстаршому обіцяному Python
+(`str | None` на 3.9), цілість фікстури і димовий прогін на ній.
+
 Запуск: PRAXIS_TOKEN=… python3 tools/build-release.py [--base https://…]
 """
-import argparse, json, os, pathlib, shutil, sys
+import argparse, json, os, pathlib, shutil, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DIST = ROOT / 'dist'
@@ -37,12 +41,53 @@ DEFAULT_BASE = 'https://praxis.51-83-129-254.sslip.io'
 KEEP_SRC = ['api.js', 'background.js', 'content.js', 'page.css', 'popup.html',
             'popup.js', 'rail.css']
 
+# Найстарший Python, на якому обіцяно, що запуститься публічний сервер.
+# Обіцянка не абстрактна: `praxis_http.py` місяць не імпортувався на 3.9 через
+# `str | None` у підписі — на моїй машині 3.14 працювало бездоганно.
+OLDEST = (3, 9)
+PUBLIC_PY = ['server/cards_api.py', 'server/praxis_http.py']
+
+
+def oldest_python():
+    """Найстарший інтерпретатор, який є на машині, і його версія.
+
+    Шукаємо саме найстарший, а не «якийсь третій пайтон»: перевірка має сенс
+    лише тоді, коли компілює той, у кого найменше синтаксису. Системний
+    /usr/bin/python3 на macOS буває старшим за все, що лежить у PATH, і саме
+    на ньому колись не запустився публічний сервер, — тому він теж у переліку.
+    """
+    cands = ['/usr/bin/python3']
+    for minor in range(OLDEST[1], sys.version_info.minor + 1):
+        cands += [f'python3.{minor}', f'/usr/bin/python3.{minor}',
+                  f'/opt/homebrew/bin/python3.{minor}']
+    found = {}
+    for cand in cands:
+        exe = cand if cand.startswith('/') else shutil.which(cand)
+        if not exe or not os.path.exists(exe):
+            continue
+        exe = os.path.realpath(exe)
+        if exe in found:
+            continue
+        try:
+            v = subprocess.run([exe, '-c', 'import sys;print("%d.%d" % sys.version_info[:2])'],
+                               capture_output=True, text=True, timeout=20)
+        except OSError:
+            continue
+        if v.returncode == 0:
+            found[exe] = tuple(int(x) for x in v.stdout.strip().split('.'))
+    if not found:
+        return None, ''
+    exe, ver = min(found.items(), key=lambda kv: kv[1])
+    return exe, '.'.join(str(x) for x in ver)
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--base', default=DEFAULT_BASE, help='адреса вітрини')
     ap.add_argument('--key', default=os.environ.get('PRAXIS_TOKEN', ''),
                     help='ключ доступу до вітрини (або змінна PRAXIS_TOKEN)')
+    ap.add_argument('--skip-checks', action='store_true',
+                    help='без перевірок — лише коли зрізу немає під рукою')
     a = ap.parse_args()
 
     base = a.base.rstrip('/')
@@ -73,6 +118,61 @@ def main() -> int:
     # відхиляє такий маніфест.
     origin = base.split('?', 1)[0].split('#', 1)[0].rstrip('/')
     host = origin + '/*'
+
+    # Перед збіркою — дві перевірки, і без них релізу немає.
+    #
+    # Причина конкретна: помилка з `nph` у вкладеній функції віддавала б 500 на
+    # кожен запит карток, а синтаксис при цьому бездоганний. Спіймали її
+    # увагою; увага закінчується.
+    # У відкритому репозиторії лежить лише транспорт: ядро з корпусом — ні.
+    # Тому перевірку, якій нема на чому працювати, пропускаємо ВГОЛОС, а не
+    # тихо: мовчазний пропуск — це той самий нічний реліз без перевірок.
+    def present(*rel):
+        return [str(ROOT / r) for r in rel if (ROOT / r).exists()]
+
+    if not a.skip_checks:
+        py = present('server/cards_api.py', 'server/praxis_http.py')
+        rc = subprocess.call([sys.executable, str(ROOT / 'tools' / 'check-closures.py'), *py])
+        if rc:
+            print('замикання: реліз не збирається', file=sys.stderr)
+            return 1
+        print('· замикання перевірено:', ', '.join(os.path.basename(f) for f in py))
+
+        # Публічний сервер має запускатися там, де його поставлять, а не лише
+        # там, де його писали. Компіляція — найдешевша перевірка цієї обіцянки.
+        exe, ver = oldest_python()
+        if not exe:
+            print(f'немає інтерпретатора {OLDEST[0]}.{OLDEST[1]} для перевірки сумісності',
+                  file=sys.stderr)
+            return 1
+        rc = subprocess.call([exe, '-m', 'py_compile', *present(*PUBLIC_PY)])
+        if rc:
+            print(f'публічний сервер не компілюється на {ver}: реліз не збирається',
+                  file=sys.stderr)
+            return 1
+        promised = '.'.join(str(x) for x in OLDEST)
+        note = '' if tuple(int(x) for x in ver.split('.')) <= OLDEST else \
+               f' — обіцяно {promised}, але старшого за {ver} тут немає'
+        print(f'· сумісність: публічний сервер компілюється на {ver}{note}')
+
+        # Дим — на замороженій фікстурі, і лише на ній. Золоті числа на живому
+        # зрізі червоніли б від кожної нової редакції закону, тобто від справних
+        # даних; тут червоне означає рівно одне — зламався код.
+        if not (ROOT / 'tools' / 'smoke.py').exists():
+            print('· дим пропущено: тут немає ядра (воно в закритому репозиторії)')
+        else:
+            rc = subprocess.call([sys.executable, str(ROOT / 'tools' / 'make-fixture.py'), '--check'])
+            if rc:
+                print('фікстура не та або її немає: реліз не збирається', file=sys.stderr)
+                return 1
+            smoke = subprocess.run([sys.executable, str(ROOT / 'tools' / 'smoke.py'),
+                                    '--mode', 'release'], capture_output=True, text=True)
+            tail = (smoke.stdout or '').strip().splitlines()[-1:] or ['']
+            if smoke.returncode:
+                print(smoke.stdout, smoke.stderr, file=sys.stderr)
+                print('дим червоний: реліз не збирається', file=sys.stderr)
+                return 1
+            print('· дим:', tail[0].strip())
 
     if DIST.exists():
         shutil.rmtree(DIST)

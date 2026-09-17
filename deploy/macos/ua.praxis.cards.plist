@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Запасний вузол вітрини на macOS (Mac Studio). Основний — Windows-машина adv;
+  цей підхоплює, коли основний мовчить, через `backup` в nginx на шлюзі.
+
+  Ставити так:
+      cp deploy/macos/ua.praxis.cards.plist ~/Library/LaunchAgents/
+      # вписати ключ замість …спільний ключ вітрини…
+      chmod 600 ~/Library/LaunchAgents/ua.praxis.cards.plist
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ua.praxis.cards.plist
+
+  Три речі, кожна з ціною, заплаченою раніше:
+
+  • NPA_DB вказує на той самий зріз. Без цього cards_api.py знаходив живу
+    npa.db корпусу за типовим шляхом і приєднував її — а її щоночі перебудовує
+    build.py просто на місці, з DROP TABLE. Сторонній читач із відкритим WAL
+    там зайвий, і вузли поводилися по-різному: на adv тієї бази немає взагалі.
+    Назви законів обидва беруть з act_names зрізу;
+
+  • слухаємо адресу Tailscale, а не 0.0.0.0. Порт 8788 не має бути видний
+    нікому, крім шлюза;
+
+  • журналів немає: і stdout, і stderr у /dev/null. Це не недбалість, а
+    обіцянка з PRIVACY.md — записувати нічого, бо записувати нічого.
+
+  Після нічної підміни зрізу службу треба перезапустити:
+      launchctl kickstart -k gui/$(id -u)/ua.praxis.cards
+  Процес, що тримає старий файл відкритим, читатиме вчорашні дані вічно, а
+  місце на диску не звільниться, доки він живий. Це робить praxis-rebuild.sh.
+
+  Ключ тут не лежить. Він не секрет (його видно в розпакованому розширенні),
+  але в репозиторії йому робити нічого.
+-->
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>CORPUS_DB</key>
+		<string>/Users/kraiz/Desktop/praxis-full.db</string>
+		<key>LAW_DB</key>
+		<string>/Users/kraiz/Desktop/praxis-full.db</string>
+		<key>NPA_DB</key>
+		<string>/Users/kraiz/Desktop/praxis-full.db</string>
+		<key>PRAXIS_TOKEN</key>
+		<string>…спільний ключ вітрини, тут його немає…</string>
+		<key>PRAXIS_WORKERS</key>
+		<string>4</string>
+	</dict>
+	<key>KeepAlive</key>
+	<true/>
+	<key>Label</key>
+	<string>ua.praxis.cards</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/python3</string>
+		<string>/Users/kraiz/Desktop/TestVoid/practice-rail/server/cards_api.py</string>
+		<string>--serve</string>
+		<string>--host</string>
+		<string>100.118.205.24</string>
+		<string>--port</string>
+		<string>8788</string>
+		<string>--db</string>
+		<string>/Users/kraiz/Desktop/praxis-full.db</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/dev/null</string>
+	<key>StandardOutPath</key>
+	<string>/dev/null</string>
+</dict>
+</plist>
