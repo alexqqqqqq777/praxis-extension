@@ -39,7 +39,24 @@
   const fmtDate = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}.${m}.${y}`; };
   const fmtNum = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const courtKind = c => /^ВП/.test(c) ? 'vp' : /^ОП/.test(c) ? 'op' : 'k';
-  const artKey = n => parseFloat(String(n).replace('-', '.')) || 0;
+  // Ключ перехідних положень: ПП.XX.10.16-1 — розділ XX, підрозділ 10, п. 16-1
+  // (те саме, що в корпусі: zir_refs.article, article_versions.article_key).
+  // Без підрозділу — ПП.XIX.3 (прикінцеві положення, п. 3).
+  const PP_RE = /^ПП\.([IVXLC]+(?:-\d+)?)\.(?:(\d+(?:-\d+)?)\.)?(\d+(?:-\d+)?)$/;
+  const isPP = n => /^ПП\./.test(String(n || ''));
+  const numKey = x => parseFloat(String(x).replace('-', '.')) || 0;
+  // статті — як є; перехідні — далеко позаду, у порядку «підрозділ, пункт»
+  const artKey = n => {
+    const m = PP_RE.exec(String(n));
+    if (!m) return numKey(n);
+    return 1e6 + numKey(m[2] || 0) * 1e3 + numKey(m[3]);
+  };
+  /** «Стаття 14» або «п. 16-1 підрозд. 10 розд. XX» — як юрист це називає. */
+  const artLabel = n => {
+    const m = PP_RE.exec(String(n));
+    if (!m) return `Стаття ${n}`;
+    return `п. ${m[3]}${m[2] ? ` підрозд. ${m[2]}` : ''} розд. ${m[1]}`;
+  };
 
   /** 843 → «843», 6145 → «6,1 тис.» — число в заголовку статті має бути коротким */
   const fmtCompact = n => {
@@ -90,14 +107,49 @@
   function collectArticles() {
     const out = [];
     if (!root) return out;
-    root.querySelectorAll('a[data-tree]').forEach(a => {
-      if (!/^st[\d-]+$/.test(a.getAttribute('data-tree') || '')) return;
-      const p = a.closest('p');
-      if (!p) return;
-      const m = /^Стаття\s+(\d+(?:-\d+)?)\s*\.\s*(.*)$/s.exec((p.textContent || '').trim());
-      if (!m) return;
-      out.push({ num: m[1], title: m[2].trim(), el: p, top: 0, height: 0 });
-    });
+
+    /* Перехідні положення. У ПКУ це розділ XX: у Ради він розмічений не
+       статтями, а пунктами — «Підрозділ 10» (pr_14: номер якоря порядковий,
+       друкований номер лише в тексті), п. 16-1 (pu16-1:pr_14), п.п. 1.1
+       (pp1.1:pu16-1:pr_14). Панель бачила тільки stN, тож п. 69 підрозд. 10
+       (воєнний стан) і п. 16-1 (військовий збір) для неї не існували, а
+       407 відповідей ДПС про військовий збір спливали на ст. 1 через вступне
+       «ПКУ регулює відносини…». Тут пункт стає одиницею читання — з тим самим
+       ключем, що в корпусі: ПП.XX.10.16-1. Прикінцеві положення без підрозділів
+       (ПП.XIX.3) — тією ж дорогою. */
+    let roman = null;                     // розділ перехідних/прикінцевих положень
+    let sub = null;                       // друкований номер підрозділу в ньому
+    for (const p of root.querySelectorAll('p')) {
+      const a = p.querySelector('a[data-tree]');
+      if (!a) continue;
+      const tree = a.getAttribute('data-tree') || '';
+      const txt = (p.textContent || '').trim();
+
+      if (/^st[\d-]+$/.test(tree)) {
+        const m = /^Стаття\s+(\d+(?:-\d+)?)\s*\.\s*(.*)$/s.exec(txt);
+        if (m) out.push({ num: m[1], title: m[2].trim(), el: p, top: 0, height: 0 });
+        continue;
+      }
+      if (/^rz/.test(tree)) {
+        const m = /^РОЗДІЛ\s+([IVXLC]+(?:-\d+)?)\s*\.\s*(ПЕРЕХІДНІ|ПРИКІНЦЕВІ)/i.exec(txt);
+        roman = m ? m[1].toUpperCase() : null;
+        sub = null;
+        continue;
+      }
+      if (!roman) continue;
+      if (/^pr_/.test(tree)) {
+        const m = /^Підрозділ\s+(\d+(?:-\d+)?)\s*\./i.exec(txt);
+        sub = m ? m[1] : null;
+        continue;
+      }
+      const m = /^pu([\d-]+):(?:pr_[\d-]+|rz\S+)$/.exec(tree);
+      if (!m) continue;
+      const head = new RegExp('^' + m[1].replace(/-/g, '\\-') + '\\.\\s*(.*)$', 's').exec(txt);
+      if (!head) continue;                // якір є, а номера в тексті немає — не пункт
+      const num = `ПП.${roman}.${sub ? sub + '.' : ''}${m[1]}`;
+      out.push({ num, title: head[1].trim().slice(0, 120), el: p, top: 0, height: 0,
+                 pp: { roman, sub, point: m[1] } });
+    }
     for (let i = 0; i < out.length; i++) out[i].nextEl = out[i + 1] ? out[i + 1].el : null;
     return out;
   }
@@ -162,6 +214,19 @@
 
       // 1) якір Ради: ЦКУ pu1:st625, ПКУ pp140.5:st140 (лише 1-й рівень)
       let part = null;
+      const pp = (byNum.get(cur) || {}).pp;
+      if (pp) {
+        // пункт перехідних положень: п.п. 1.1 — pp1.1:pu16-1:pr_14. Перелік
+        // «1)–3)» усередині підпункту Рада позначає pp1, pp2 — без крапки; це
+        // не норми, а рядки переліку, і корпус їх не розрізняє: лишаємо їх у
+        // підпункті, який іде перед ними
+        for (const a of el.querySelectorAll('a[data-tree]')) {
+          const m = /(?:^|:)pp([\d.-]+):pu([\d-]+):(?:pr_[\d-]+|rz\S+)$/.exec(a.getAttribute('data-tree') || '');
+          if (m && m[2] === pp.point && m[1].includes('.')) { part = m[1]; break; }
+        }
+        if (part) out.push({ art: cur, part, el, top: 0 });
+        continue;
+      }
       for (const a of el.querySelectorAll('a[data-tree]')) {
         const m = /(?:^|:)(?:pp|pu)([\d.]+):st([\d-]+)$/.exec(a.getAttribute('data-tree') || '');
         if (m && m[2] === cur) { part = m[1]; break; }
@@ -561,32 +626,7 @@
 
       // Бейдж ДПС — поруч, але іншим, холодним кольором: це джерело іншої
       // ваги, і юрист має бачити різницю, не читаючи підписів.
-      // Число на бейджі — відповіді, де стаття названа в питанні, а не будь-де
-      // в тексті. Інакше ст. 1 ПКУ мала «ДПС · 60» з нуля відповідей про ст. 1:
-      // усі шістдесят — вступне «ПКУ регулює відносини… (п. 1.1 ст. 1)» у тілі
-      // відповіді про перехідні положення. Побіжні згадки лишаються в розділі.
-      const z = ZIR_COUNTS.get(num);
-      const named = zirNamed(z);
-      if (named) {
-        const aside = z[0] - named;
-        const zb = h(`<span class="praxis-badge praxis-badge--zir" data-praxis-zir="${esc(num)}"
-            role="button" tabindex="0"
-            title="Роз'яснень ДПС (ЗІР) про цю статтю: ${fmtNum(named)}${
-              aside ? `, ще ${fmtNum(aside)} згадують її побіжно` : ''}${
-              z[1] ? ` · чинних серед усіх: ${fmtNum(z[1])}` : ''} · клік — розділ ДПС">
-            ДПС · ${fmtCompact(named)}</span>`);
-        a.el.appendChild(document.createTextNode(' '));
-        a.el.appendChild(zb);
-        const openZir = e => {
-          e.preventDefault(); e.stopPropagation();
-          S.pinned = num; S.peek = null; S.mode = 'zir';
-          if (!S.open) setOpen(true);
-          ensureZir(num); render();
-          listEl.scrollTo({ top: 0 });
-        };
-        zb.addEventListener('click', openZir);
-        zb.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openZir(e); });
-      }
+      mountZirBadge(a, num);
 
       b.addEventListener('mouseenter', () => { S.peek = num; ensure(num); ensureNorms(num); render(); });
       b.addEventListener('mouseleave', () => { S.peek = null; render(); });
@@ -603,6 +643,49 @@
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); b.click(); }
       });
     }
+
+    // Бейдж ДПС не залежить від практики ВС: п. 16-1 підрозд. 10 ПКУ має 407
+    // відповідей ДПС і жодного рішення в зрізі — і раніше бейджа не мав, бо
+    // цикл вище йде лише статтями з практикою.
+    for (const num of ZIR_COUNTS.keys()) {
+      if (COUNTS.has(num) || !byNum.has(num)) continue;
+      mountZirBadge(byNum.get(num), num);
+    }
+  }
+
+  function mountZirBadge(a, num) {
+    // Число на бейджі — відповіді, де стаття названа в питанні, а не будь-де
+    // в тексті. Інакше ст. 1 ПКУ мала «ДПС · 60» з нуля відповідей про ст. 1:
+    // усі шістдесят — вступне «ПКУ регулює відносини… (п. 1.1 ст. 1)» у тілі
+    // відповіді про перехідні положення. Побіжні згадки лишаються в розділі.
+    const z = ZIR_COUNTS.get(num);
+    const named = zirNamed(z);
+    if (!named) return;
+    const aside = z[0] - named;
+    const zb = h(`<span class="praxis-badge praxis-badge--zir" data-praxis-zir="${esc(num)}"
+        role="button" tabindex="0"
+        title="Роз'яснень ДПС (ЗІР) про цю ${a.pp ? 'норму' : 'статтю'}: ${fmtNum(named)}${
+          aside ? `, ще ${fmtNum(aside)} згадують її побіжно` : ''}${
+          z[1] ? ` · чинних серед усіх: ${fmtNum(z[1])}` : ''} · клік — розділ ДПС">
+        ДПС · ${fmtCompact(named)}</span>`);
+    if (a.pp) {
+      // пункт перехідних положень — це абзац на пів екрана; бейдж наприкінці
+      // ніхто не побачить, тож ставимо перед номером
+      a.el.insertBefore(document.createTextNode(' '), a.el.firstChild);
+      a.el.insertBefore(zb, a.el.firstChild);
+    } else {
+      a.el.appendChild(document.createTextNode(' '));
+      a.el.appendChild(zb);
+    }
+    const openZir = e => {
+      e.preventDefault(); e.stopPropagation();
+      S.pinned = num; S.peek = null; S.mode = 'zir';
+      if (!S.open) setOpen(true);
+      ensureZir(num); render();
+      listEl.scrollTo({ top: 0 });
+    };
+    zb.addEventListener('click', openZir);
+    zb.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openZir(e); });
   }
 
   /** номер статті → Map(ключ норми → скільки рішень) */
@@ -910,7 +993,7 @@
       <div class="empty__ico">${action === 'retry' ? ICON.retry : ICON.empty}</div>
       <div class="empty__t">${esc(title)}</div>
       <div class="empty__s">${esc(sub)}</div>
-      ${near ? `<button class="empty__jump" data-goto="${esc(near)}">Стаття ${esc(near)} →</button>` : ''}
+      ${near ? `<button class="empty__jump" data-goto="${esc(near)}">${esc(artLabel(near))} →</button>` : ''}
       ${action === 'retry' ? '<button class="empty__jump" data-act="retry">Спробувати ще раз</button>' : ''}
       ${action === 'retry-history' ? '<button class="empty__jump" data-act="retry-history">Спробувати ще раз</button>' : ''}
       ${action === 'reset' ? '<button class="empty__jump" data-act="reset-all">Скинути всі фільтри</button>' : ''}
@@ -922,7 +1005,11 @@
    *  що саме звужено, і дати це зняти.
    */
   function renderParts(num) {
-    const path = pathOf.get(pk(num, S.part)) || [];
+    let path = pathOf.get(pk(num, S.part)) || [];
+    // Шлях норми приходить із /cards. Там, де практики ВС немає (перехідні
+    // положення, статті без рішень), його немає теж — а норма обрана, і
+    // розділ ДПС по ній звужено. Чип має бути, інакше фільтр не зняти.
+    if (!path.length && S.part != null) path = [{ label: normLabel(num, S.part) }];
     if (!path.length) {
       normEl.innerHTML = '';
       return;
@@ -1380,11 +1467,11 @@
     // їх не можна: юрист вирішить, що норма стоїть незмінною з 2003 року.
     const scope = S.part == null ? ''
       : rec.part_unknown
-        ? `<div class="scope scope--none">У статті ${esc(num)} немає
-             <b>${esc(normLabel(num, S.part))}</b> — ця норма з іншої статті
-             <button data-act="scope-all">показати зміни статті ${esc(num)}</button></div>`
+        ? `<div class="scope scope--none">У ${isPP(num) ? 'нормі' : 'статті'} ${esc(isPP(num) ? artLabel(num) : num)} немає
+             <b>${esc(normLabel(num, S.part))}</b> — ця норма з іншої ${isPP(num) ? 'норми' : 'статті'}
+             <button data-act="scope-all">показати зміни ${isPP(num) ? esc(artLabel(num)) : 'статті ' + esc(num)}</button></div>`
         : `<div class="scope">Показано лише зміни <b>${esc(normLabel(num, S.part))}</b>
-             <button data-act="scope-all">усі зміни статті ${esc(num)}</button></div>`;
+             <button data-act="scope-all">усі зміни ${isPP(num) ? esc(artLabel(num)) : 'статті ' + esc(num)}</button></div>`;
 
     // Майбутня редакція — попередження, якого немає в жодному сервісі.
     // Порад про те, що юристові робити зі своїми справами, тут не даємо:
@@ -1953,13 +2040,13 @@
     $('[data-slot="src"]').title = SRC[2];
     $('[data-slot="law"]').textContent = S.lawShort;
 
-    $('[data-slot="art"]').textContent = num ? `Стаття ${num}` : '—';
+    $('[data-slot="art"]').textContent = num ? artLabel(num) : '—';
     $('[data-slot="title"]').textContent = num
       ? ((byNum.get(num) || {}).title || '')
       : 'Прокрутіть текст — панель слідує за статтею, яку ви читаєте';
 
     modeEl.hidden = !S.pinned || S.mode === 'history';
-    if (S.pinned) $('[data-slot="mode-text"]').textContent = `Закріплено статтю ${S.pinned}`;
+    if (S.pinned) $('[data-slot="mode-text"]').textContent = `Закріплено: ${artLabel(S.pinned)}`;
 
     const key = artKey(num || 0);
     $('[data-act="prev"]').disabled = !withPractice.some(n => artKey(n) < key);
@@ -2016,8 +2103,8 @@
       const near = nearestWithPractice(key);
       countEl.textContent = withPractice.length ? `${fmtNum(withPractice.length)} статей із практикою` : '';
       listEl.innerHTML = emptyHTML(
-        num ? `До статті ${num} висновків немає` : 'Немає активної статті',
-        num ? 'У базі немає рішень ВС, де цю статтю застосовано у мотивувальній частині.'
+        num ? `До ${isPP(num) ? 'норми' : 'статті'} ${isPP(num) ? artLabel(num) : num} висновків немає` : 'Немає активної статті',
+        num ? `У базі немає рішень ВС, де цю ${isPP(num) ? 'норму' : 'статтю'} застосовано у мотивувальній частині.`
             : 'Прокрутіть текст закону нижче.',
         near);
     } else if (!rec || rec.state === 'loading') {
@@ -2447,11 +2534,14 @@
     const q = jumpInput.value.trim();
     if (!q) { jumpHint.textContent = ''; return; }
     const exact = byNum.get(q);
-    const near = arts.filter(a => a.num.startsWith(q)).slice(0, 6);
+    // статті — за початком номера; пункти перехідних положень — за номером
+    // пункту («16-1» знаходить п. 16-1 підрозд. 10 розд. XX)
+    const near = arts.filter(a => a.pp ? a.pp.point === q : a.num.startsWith(q)).slice(0, 6);
     jumpHint.innerHTML = exact
       ? `<button class="jumpbox__go" data-goto="${esc(q)}">Стаття ${esc(q)} — ${esc(exact.title.slice(0, 40))}</button>`
       : near.length
-        ? near.map(a => `<button class="jumpbox__go" data-goto="${esc(a.num)}">ст. ${esc(a.num)}</button>`).join('')
+        ? near.map(a => `<button class="jumpbox__go" data-goto="${esc(a.num)}">${
+            a.pp ? esc(artLabel(a.num)) : 'ст. ' + esc(a.num)}</button>`).join('')
         : '<span class="jumpbox__no">такої статті в документі немає</span>';
   });
   jumpInput.addEventListener('keydown', e => {
@@ -2509,6 +2599,11 @@
     }
     S.pinned = num; S.peek = null;
     if (part) { S.part = part; S.partManual = true; S.partArt = num; }
+    // Стрибок в іншу статтю без норми — вибір норми лишається в тій, де його
+    // зробили (те саме правило, що у скрол-стеженні; закріплену статтю воно
+    // не обробляє, тож повторюємо тут). Інакше після п. 69.28 підрозд. 10
+    // ст. 200 відкривалася звуженою до неіснуючого в ній «п. 69.28».
+    else if (S.partArt !== num) { S.part = null; S.partManual = false; S.partArt = null; }
 
     window.scrollTo({ top: Math.max(0, target - window.innerHeight / 3), behavior: 'smooth' });
     flash(el);
