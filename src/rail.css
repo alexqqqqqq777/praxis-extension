@@ -5,7 +5,12 @@
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
-.rail {
+/* Токени — на всіх трьох кореневих елементах тіні, а не лише на панелі.
+   Кнопка «Практика ВС» і сповіщення лежать ПОРУЧ із .rail, а не всередині, тож
+   змінних, оголошених лише на .rail, не бачили: у кнопки не було ні тла, ні
+   межі, ні кольору тексту. На білій сторінці від неї лишався голий чорний
+   напис, на темній — нічого, і закриту панель не було чим відкрити. */
+.rail, .fab, .toast {
   /* ── токени: світла тема ─────────────────────────────────────────── */
   --bg:        #f7f7f9;
   --surface:   #ffffff;
@@ -31,7 +36,9 @@
   --r:  14px;
   --r-s: 9px;
   --ease: cubic-bezier(.22,.72,.2,1);
+}
 
+.rail {
   position: fixed;
   top: 0; right: 0; bottom: 0;
   width: 404px;
@@ -85,7 +92,7 @@
 /* усередині панелі лишаємо місце під мапу */
 .hd, .list, .ft { margin-left: 13px; }
 
-.rail[data-theme="dark"] {
+.rail[data-theme="dark"], .fab[data-theme="dark"], .toast[data-theme="dark"] {
   --bg:        #101015;
   --surface:   #17171e;
   --surface-2: #1d1d26;
@@ -821,6 +828,11 @@ kbd {
   transition: transform .2s var(--ease), box-shadow .2s var(--ease), opacity .2s var(--ease);
 }
 .fab:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+/* вкладку треба перезавантажити — бурштинова цятка, щоб це було видно й на закритій панелі */
+.fab.is-stale::after {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--warn); box-shadow: 0 0 0 3px var(--warn-bg);
+}
 .fab.is-hidden { opacity: 0; pointer-events: none; transform: translateY(8px) scale(.96); }
 .fab__mark {
   width: 15px; height: 15px; border-radius: 5px;

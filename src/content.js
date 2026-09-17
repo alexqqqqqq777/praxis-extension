@@ -362,7 +362,24 @@
       const live = (chrome.runtime.getManifest().version_name || '');
       return mine && live && mine !== live ? live : '';
     } catch (e) {
-      return '';                    // поза розширенням або контекст уже знято
+      return '';                    // поза розширенням
+    }
+  }
+
+  /** Вкладка втратила зв'язок із розширенням.
+   *
+   *  Після перезавантаження чи оновлення розширення скрипт у вже відкритій
+   *  сторінці лишається жити, але контекст у нього знято: chrome.runtime.id
+   *  зникає, сховище недоступне, події з меню розширення сюди не доходять.
+   *  Саме так виглядало «закрив панель — і перемикач у меню її не відкриває»:
+   *  перемикач писав у сховище, а слухати було вже нікому. Раніше цей випадок
+   *  потрапляв у catch вище й вважався «все гаразд» — хоча це той самий
+   *  застарілий код, тільки ще й глухий. */
+  function orphaned() {
+    try {
+      return typeof chrome !== 'undefined' && !!chrome.runtime && !chrome.runtime.id;
+    } catch (e) {
+      return true;
     }
   }
 
@@ -1794,11 +1811,21 @@
     const el = $('[data-slot="stale"]');
     if (!el) return;
     const live = staleBuild();
-    el.hidden = !live;
-    if (live) {
+    const lost = orphaned();
+    el.hidden = !live && !lost;
+    if (lost) {
+      el.innerHTML = 'Розширення перезавантажено, і ця вкладка втратила з ним зв’язок: '
+        + 'перемикач у меню розширення й налаштування сюди не доходять. '
+        + '<b>Перезавантажте сторінку.</b>';
+    } else if (live) {
       el.innerHTML = 'Praxis оновлено до <b>' + esc(live) + '</b>. У цій вкладці '
         + 'працює попередня версія — <b>перезавантажте сторінку</b>.';
     }
+    // панель може бути закрита — тоді те саме каже кнопка, якою її відкривають
+    fab.classList.toggle('is-stale', lost || !!live);
+    fab.title = (lost || live)
+      ? 'Показати практику (Alt+P) · вкладку треба перезавантажити: розширення оновилося'
+      : 'Показати практику (Alt+P)';
   }
 
   function renderSecs(num) {
@@ -2346,6 +2373,7 @@
     document.documentElement.classList.toggle('praxis-open', v);
     rail.classList.toggle('is-open', v);
     fab.classList.toggle('is-hidden', v);
+    renderStale();               // закрита панель: про втрачений зв'язок скаже кнопка
     save();
     setTimeout(() => { measure(); positionMarker(shown()); buildTicks(); drawThumb(); }, 360);
   }
@@ -2355,6 +2383,7 @@
       (S.theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     rail.dataset.theme = dark ? 'dark' : 'light';
     fab.dataset.theme = dark ? 'dark' : 'light';
+    toastEl.dataset.theme = dark ? 'dark' : 'light';
     $('[data-act="theme"]').classList.toggle('is-on', S.theme !== 'auto');
     $('[data-act="page-night"]').classList.toggle('is-on', S.pageNight);
 

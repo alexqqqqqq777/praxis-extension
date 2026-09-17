@@ -60,3 +60,4 @@ body {
 kbd { padding:1px 5px; border-radius:5px; border:1px solid var(--line-2); border-bottom-width:2px;
       background:var(--surface); color:var(--text-2); font:550 10.5px ui-monospace,Menlo,monospace; }
 a { color: var(--accent); text-decoration:none; }
+.hint--row { margin: -2px 0 10px; color: var(--text-3); font-size: 11px; line-height: 1.4; }
