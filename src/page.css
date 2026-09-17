@@ -280,8 +280,17 @@ html.praxis-night #article :is(.rvts102, .rvts103, .rvts111, .rvts113, .rvts114,
 /* таблиці: у розмітці Ради межі вписані в style="border: 1px solid #000000" */
 html.praxis-night #article :is(table, td, th, tr) { border-color: #3a3b47 !important; background-color: transparent !important; }
 html.praxis-night #article th { background-color: var(--pn-bg-2) !important; }
-/* формули й схеми — чорним по білому; перевертаємо, зберігаючи відтінки */
-html.praxis-night #article img { filter: invert(.9) hue-rotate(180deg); }
+/* Малюнки в тексті. Герб — чорні лінії на ПРОЗОРОМУ тлі (gerb.gif, 60×80):
+   досить перевернути, і виходить світлий тризуб у контурі щита, без жодної
+   плашки. Формули — чорним по НЕПРОЗОРОМУ білому (gif 87a): просто перевернуті,
+   вони стають темно-сірими прямокутниками, що не збігаються з аркушем. Тому
+   повне перевертання + накладання «screen»: колишнє біле зникає в аркуші,
+   лишається світлий малюнок. hue-rotate повертає відтінки кольорових схем;
+   яскравість трохи знижена, щоб герб не світив яскравіше за текст. */
+html.praxis-night #article img {
+  filter: invert(1) hue-rotate(180deg) brightness(.88) sepia(.12);
+  mix-blend-mode: screen;
+}
 
 /* ── власні елементи Praxis на сторінці ── */
 html.praxis-night .praxis-badge {
