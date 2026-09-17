@@ -1,0 +1,62 @@
+/* Praxis — налаштування розширення.
+ *
+ * Окремим файлом, а не <style> усередині сторінки: у релізі CSP каже
+ * style-src 'self', і вбудований блок стилів Chrome просто не застосує —
+ * попап відкриється без жодного оформлення. У теці розробника CSP мʼякша,
+ * тому побачити це можна лише на зібраному розширенні.
+ */
+:root {
+  --bg:#f7f7f9; --surface:#fff; --line:#e6e6eb; --line-2:#d7d7de;
+  --text:#17171c; --text-2:#5c5c68; --text-3:#8a8a96;
+  --accent:#4f46e5; --accent-bg:#eef0fe; --warn:#b45309; --warn-bg:#fdf3e3;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#101015; --surface:#17171e; --line:#26262f; --line-2:#33333f;
+          --text:#ecedf2; --text-2:#a0a1ad; --text-3:#70717d;
+          --accent:#8b87ff; --accent-bg:#1c1b33; --warn:#e2a33c; --warn-bg:#2a2114; }
+}
+* { box-sizing: border-box; }
+body {
+  width: 288px; margin: 0; padding: 16px;
+  background: var(--bg); color: var(--text);
+  font: 400 13px/1.5 -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: -.004em;
+}
+.brand { display:flex; align-items:center; gap:8px; margin-bottom:3px; }
+.mark { width:16px; height:16px; border-radius:5px;
+        background:linear-gradient(145deg,var(--accent),#22d3ee); box-shadow:0 0 0 3px var(--accent-bg); }
+.name { font-size:13.5px; font-weight:640; }
+.demo { margin-left:auto; padding:1.5px 7px; border-radius:999px;
+        background:var(--warn-bg); color:var(--warn);
+        font-size:10px; font-weight:640; letter-spacing:.03em; text-transform:uppercase; }
+.sub { color: var(--text-2); font-size:12px; margin:0 0 14px; }
+.row { display:flex; align-items:center; gap:10px; padding:10px 12px;
+       border:1px solid var(--line); border-radius:11px; background:var(--surface); margin-bottom:8px; }
+.row label { font-weight:550; font-size:12.5px; }
+.row .hint { display:block; color:var(--text-3); font-size:11px; font-weight:400; margin-top:1px; }
+.seg { margin-left:auto; display:flex; gap:2px; padding:2px; border-radius:9px; background:var(--bg); }
+.seg button { border:0; padding:4px 8px; border-radius:7px; background:transparent;
+              color:var(--text-2); font:550 11.5px inherit; cursor:pointer; }
+.seg button.on { background:var(--surface); color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.sw { margin-left:auto; position:relative; width:38px; height:22px; flex:0 0 auto; }
+.sw input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+.sw span { position:absolute; inset:0; border-radius:99px; background:var(--line-2); transition:background .18s; }
+.sw span::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px;
+                  border-radius:50%; background:#fff; transition:transform .18s cubic-bezier(.22,.72,.2,1); }
+.sw input:checked + span { background:var(--accent); }
+.sw input:checked + span::after { transform: translateX(16px); }
+.row.col { display:block; }
+.row.col > label { display:block; margin-bottom:8px; }
+.api { display:flex; align-items:center; gap:8px; }
+.api input { flex:1 1 auto; min-width:0; padding:6px 9px; border:1px solid var(--line-2);
+             border-radius:8px; background:var(--bg); color:var(--text);
+             font:400 12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; outline:none; }
+.api input:focus { border-color:var(--accent); }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--text-3); flex:0 0 auto; }
+.dot.ok { background:#16a34a; } .dot.bad { background:#dc2626; }
+#apiState { margin-top:6px; color:var(--text-3); font-size:11px; }
+.note { margin:12px 2px 0; color:var(--text-3); font-size:11px; line-height:1.5; }
+kbd { padding:1px 5px; border-radius:5px; border:1px solid var(--line-2); border-bottom-width:2px;
+      background:var(--surface); color:var(--text-2); font:550 10.5px ui-monospace,Menlo,monospace; }
+a { color: var(--accent); text-decoration:none; }
