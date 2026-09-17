@@ -82,25 +82,41 @@ async function probe(base) {
       referrerPolicy: 'no-referrer',
       headers: key ? { 'X-Praxis-Key': key } : undefined
     });
-    if (r.status === 401) {
+    const d = await r.json();
+    if (my !== probeSeq) return;
+    if (!d.ok) {
+      dotEl.className = 'dot bad';
+      stateEl.textContent = 'сервіс відповідає, але база недоступна';
+      return;
+    }
+
+    // /health ключа НЕ питає — навмисно, щоб перевірка живості нічого не
+    // вимагала. Через це «на звʼязку» тут світилося зеленим і тоді, коли
+    // ключа немає й жодної картки панель не покаже. Перевірка, яка не може
+    // почервоніти від справжньої поломки, гірша за її відсутність, тому
+    // питаємо ще й маршрут, який ключ вимагає.
+    const probeUrl = new URL('/act', u.origin + u.pathname.replace(/\/$/, ''));
+    probeUrl.searchParams.set('nreg', '435-15');
+    const r2 = await fetch(probeUrl.toString(), {
+      signal: ctl.signal, cache: 'no-store', credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+      headers: key ? { 'X-Praxis-Key': key } : undefined
+    });
+    if (my !== probeSeq) return;
+    if (r2.status === 401) {
       // Вітрина відповіла — і не прийняла ключ. Казати «не відповідає» тут
       // означає послати юриста лагодити мережу замість адреси.
-      if (my !== probeSeq) return;
       dotEl.className = 'dot bad';
       stateEl.textContent = key
-        ? 'вітрина не прийняла ключ (401) — допишіть до адреси ?key=…'
+        ? 'вітрина не прийняла ключ (401) — перевірте ?key=… в адресі'
         : 'вітрина вимагає ключ (401) — допишіть до адреси ?key=…';
       return;
     }
-    const d = await r.json();
-    if (my !== probeSeq) return;
     const src = keySource(base);
-    dotEl.className = 'dot ' + (d.ok ? 'ok' : 'bad');
-    stateEl.textContent = d.ok
-      ? (d.norm_refs
-          ? `на звʼязку · ${Number(d.norm_refs).toLocaleString('uk')} посилань на норми`
-          : 'на звʼязку') + (src ? ` · ключ ${src}` : '')
-      : 'сервіс відповідає, але база недоступна';
+    dotEl.className = 'dot ok';
+    stateEl.textContent = (d.norm_refs
+      ? `на звʼязку · ${Number(d.norm_refs).toLocaleString('uk')} посилань на норми`
+      : 'на звʼязку · картки віддаються') + (src ? ` · ключ ${src}` : '');
   } catch (e) {
     if (my !== probeSeq) return;
     dotEl.className = 'dot bad';
