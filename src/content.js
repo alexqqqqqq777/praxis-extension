@@ -90,6 +90,7 @@
   const ICON = {
     close: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
     theme: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="4.2"/><path d="M8 3.8V1M8 15v-2.8M12.2 8H15M1 8h2.8M11 5l1.9-1.9M3.1 12.9L5 11M11 11l1.9 1.9M3.1 3.1L5 5" stroke-linecap="round"/></svg>',
+    pageNight: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M3.8 1.8h5.4L12.4 5v9.2H3.8z"/><path d="M9 1.9V5.2h3.3"/><path d="M8.9 7.6a2.5 2.5 0 1 0 1.5 4 2.1 2.1 0 0 1-1.5-4z" fill="currentColor" stroke="none"/></svg>',
     search: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.3"/><path d="M10.3 10.3L14 14" stroke-linecap="round"/></svg>',
     copy: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.5" y="5.5" width="8" height="8" rx="2"/><path d="M10.5 3.2A2 2 0 008.6 2H4.5a2.5 2.5 0 00-2.5 2.5v4.1c0 .9.6 1.6 1.4 1.9"/></svg>',
     ext: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M9.5 2.5H13v3.6M12.8 2.8L7.4 8.2"/><path d="M12.4 9.6V12a1.6 1.6 0 01-1.6 1.6H4A1.6 1.6 0 012.4 12V5.2A1.6 1.6 0 014 3.6h2.5"/></svg>',
@@ -269,6 +270,7 @@
   const S = {
     open: true,
     theme: 'auto',
+    pageNight: true,         // нічний режим і на сторінці Ради — разом із темою панелі
     source: 'demo',          // 'live' — вітрина, 'demo' — набір із data.js, 'offline' — вітрина мовчить
     offlineReason: '',
     answered: false,         // вітрина відповіла, навіть якщо даних немає
@@ -385,6 +387,7 @@
           <div class="hd__tools">
             <button class="ico" data-act="search" title="Пошук у завантажених висновках">${ICON.search}</button>
             <button class="ico" data-act="theme" title="Тема">${ICON.theme}</button>
+            <button class="ico" data-act="page-night" title="Нічний режим і на сторінці Ради — разом із темою панелі">${ICON.pageNight}</button>
             <button class="ico" data-act="close" title="Сховати панель (Alt+P)">${ICON.close}</button>
           </div>
         </div>
@@ -2353,13 +2356,24 @@
     rail.dataset.theme = dark ? 'dark' : 'light';
     fab.dataset.theme = dark ? 'dark' : 'light';
     $('[data-act="theme"]').classList.toggle('is-on', S.theme !== 'auto');
+    $('[data-act="page-night"]').classList.toggle('is-on', S.pageNight);
+
+    /* Сторінка Ради — слідом за панеллю. Темна панель поруч із білим аркушем
+       на пів екрана — це ліхтар в очі, заради якого темну тему й вмикали.
+       Три умови: синхронізацію ввімкнено; застереження прийнято (до згоди
+       розширення на сторінці не змінює нічого); у Ради не ввімкнено власний
+       темний режим (body.dark) — два темні режими одне на одному дають кашу. */
+    const own = document.body && document.body.classList.contains('dark');
+    document.documentElement.classList.toggle('praxis-night',
+      dark && S.pageNight && S.agreed === DISCLAIMER_V && !own);
   }
 
   function save() {
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local)
         chrome.storage.local.get('praxis', r => {
-          chrome.storage.local.set({ praxis: Object.assign({}, r.praxis, { open: S.open, theme: S.theme, agreed: S.agreed }) });
+          chrome.storage.local.set({ praxis: Object.assign({}, r.praxis,
+            { open: S.open, theme: S.theme, agreed: S.agreed, pageNight: S.pageNight }) });
         });
     } catch (e) { }
   }
@@ -2509,6 +2523,7 @@
       if (a === 'gate-accept') {
         S.agreed = DISCLAIMER_V;
         save();
+        applyTheme();                 // нічний режим сторінки чекав на згоду
         gate.hidden = true;
         start();
         return;
@@ -2576,6 +2591,15 @@
         resetFilters();
         if (a === 'reset-all') { S.query = ''; searchInput.value = ''; }
         refetch(); return;
+      }
+      if (a === 'page-night') {
+        S.pageNight = !S.pageNight;
+        applyTheme(); save();
+        const dark = rail.dataset.theme === 'dark';
+        toast(S.pageNight
+          ? (dark ? 'Сторінка Ради — темна разом із панеллю' : 'Сторінка Ради потемніє разом із панеллю')
+          : 'Сторінка Ради — як є');
+        return;
       }
       if (a === 'theme') {
         S.theme = S.theme === 'auto' ? 'dark' : S.theme === 'dark' ? 'light' : 'auto';
@@ -2832,6 +2856,7 @@
   async function boot(saved) {
     if (saved && typeof saved.open === 'boolean') S.open = saved.open;
     if (saved && saved.theme) S.theme = saved.theme;
+    if (saved && typeof saved.pageNight === 'boolean') S.pageNight = saved.pageNight;
     if (saved && saved.agreed) S.agreed = saved.agreed;
 
     measure();
@@ -2979,6 +3004,9 @@
     render();
     setTimeout(() => { measure(); positionMarker(shown()); }, 400);
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+    // Друкують на білому: на час друку нічний режим сторінки знімаємо.
+    window.addEventListener('beforeprint', () => document.documentElement.classList.remove('praxis-night'));
+    window.addEventListener('afterprint', applyTheme);
   }
 
   boot(prefs);
@@ -2991,6 +3019,7 @@
         const v = ch.praxis.newValue || {};
         if (typeof v.open === 'boolean' && v.open !== S.open) setOpen(v.open);
         if (v.theme && v.theme !== S.theme) { S.theme = v.theme; applyTheme(); }
+        if (typeof v.pageNight === 'boolean' && v.pageNight !== S.pageNight) { S.pageNight = v.pageNight; applyTheme(); }
       });
     }
   } catch (e) { }

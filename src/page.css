@@ -104,6 +104,14 @@ html.praxis-on #article { position: relative; }
 }
 .praxis-badge--hist:hover { background: #b45309; border-color: #b45309; color: #fff; transform: translateY(-1px); }
 
+/* ДПС — холодним кольором: це джерело іншої ваги, і різницю видно без підписів */
+.praxis-badge--zir {
+  border-color: color-mix(in oklab, #0891b2 26%, transparent);
+  background: color-mix(in oklab, #0891b2 7%, #fff);
+  color: #0e7490;
+}
+.praxis-badge--zir:hover { background: #0891b2; border-color: #0891b2; color: #fff; }
+
 .praxis-badge.is-pinned {
   background: #d97706;
   border-color: #d97706;
@@ -161,4 +169,141 @@ html.praxis-on #article { position: relative; }
   border-left: 3px solid #4f46e5;
   padding-left: 10px;
   background: #f4f4ff;
+}
+
+
+/* ═══ нічний режим сторінки Ради ═══════════════════════════════════════════
+   Вмикається класом html.praxis-night — панель ставить його, коли сама темна
+   і синхронізацію не вимкнено кнопкою (аркуш із півмісяцем). У Ради є власний
+   темний режим (?dark=1), але він вимагає окремої таблиці стилів із сервера
+   й синій, як прапор; тут — той самий теплий графіт, що й у панелі, щоб дві
+   половини екрана читалися як одне ціле.
+
+   Текст — не білий, а теплий папір (#d8d4cb на #15161b, контраст ≈ 11:1):
+   кодекс читають годинами, і чистий білий на чорному «дзвенить». Шрифт —
+   Charter / Georgia замість Times New Roman: у Times тонкі штрихи на темному
+   тлі розсипаються. Розмір не чіпаємо — від нього залежать таблиці Ради.
+   Моноширинні класи (псевдографіка старих актів) лишаються моноширинними. */
+html.praxis-night {
+  color-scheme: dark;
+  --pn-outer: #0e0f13;   /* за межами аркуша */
+  --pn-bg:    #15161b;   /* аркуш */
+  --pn-bg-2:  #1c1d25;   /* картки, форми, шапки таблиць */
+  --pn-line:  #2c2d38;
+  --pn-text:  #d8d4cb;   /* основний текст — теплий папір */
+  --pn-head:  #f2eee5;   /* заголовки статей і розділів */
+  --pn-muted: #8e8b85;   /* примітки про зміни, службове */
+  --pn-link:    #8fb4ff;  --pn-link-h:  #bdd3ff;   /* у Ради сині: посилання на акти */
+  --pn-green:   #7fcf9f;  --pn-green-h: #a9e6c2;   /* зелені: посилання всередині акта */
+  --pn-red:     #ff948b;  --pn-red-h:   #ffb9b3;   /* червоні: нечинне, виключене */
+}
+html.praxis-night body { background: var(--pn-outer) !important; color: var(--pn-text) !important; }
+html.praxis-night #page { background: var(--pn-bg) !important; box-shadow: 0 0 0 1px var(--pn-line) !important; }
+html.praxis-night :is(#middle, #content, #Document, aside, .page-header, .bg-white, .bg-light) {
+  background: transparent !important; color: var(--pn-text) !important;
+}
+html.praxis-night body, html.praxis-night #page { transition: background-color .25s ease, color .25s ease; }
+
+/* шапка й підвал сайту: свої кольори, лише приглушені — щоб не світили */
+html.praxis-night :is(#header, #mainhead, .navbar) { background: #10131d !important; border-color: var(--pn-line) !important; }
+html.praxis-night #header img { filter: brightness(.85); }
+html.praxis-night footer { background: #101116 !important; border-top: 1px solid var(--pn-line) !important; color: var(--pn-muted) !important; }
+html.praxis-night footer a { color: #b9b6ae !important; }
+html.praxis-night footer a:hover { color: var(--pn-link-h) !important; }
+
+/* типографіка сайту */
+html.praxis-night :is(h1, h2, h3, h4, h5, h6), html.praxis-night :is(h1, h2, h3, h4, h5, h6) > a { color: var(--pn-head) !important; }
+html.praxis-night :is(small, .text-muted, .small) { color: var(--pn-muted) !important; }
+html.praxis-night hr { border-color: var(--pn-line) !important; color: var(--pn-line) !important; }
+html.praxis-night a:not(.btn):not(.praxis-badge) { color: var(--pn-link); }
+html.praxis-night a:not(.btn):not(.praxis-badge):hover { color: var(--pn-link-h); }
+html.praxis-night ::selection { background: #3a4a80; color: #fff; }
+html.praxis-night :is(mark, .mark, .hl, .highlight) { background: #5b4a14 !important; color: #ffe9a8 !important; }
+
+/* кнопки, форми, картки, модалки — Bootstrap Ради */
+html.praxis-night .btn:is(.btn-light, .btn-default, .btn-outline-secondary, .btn-outline-primary, .btn-outline-info, .btn-secondary) {
+  background: transparent !important; border-color: var(--pn-line) !important; color: #c9c5bc !important;
+}
+html.praxis-night .btn:is(.btn-light, .btn-default, .btn-outline-secondary, .btn-outline-primary, .btn-outline-info, .btn-secondary):is(:hover, .active) {
+  background: var(--pn-bg-2) !important; color: var(--pn-head) !important; border-color: #41424f !important;
+}
+html.praxis-night :is(.card, .box, .modal-content, .dropdown-menu, .list-group-item, .popover, .toast, .code, .blockquote) {
+  background: var(--pn-bg-2) !important; border-color: var(--pn-line) !important; color: var(--pn-text) !important;
+}
+html.praxis-night :is(.card-header, .card-footer, .modal-header, .modal-footer) { background: #20212a !important; border-color: var(--pn-line) !important; }
+html.praxis-night :is(.dropdown-item, .nav-link, .page-link) { color: var(--pn-text) !important; background: transparent !important; }
+html.praxis-night :is(.dropdown-item, .page-link):hover { background: #262733 !important; }
+html.praxis-night :is(input, select, textarea, .form-control, .custom-select, .nice-select) {
+  background: #101116 !important; border-color: var(--pn-line) !important; color: var(--pn-text) !important;
+}
+html.praxis-night .close { color: var(--pn-text) !important; text-shadow: none !important; }
+/* попередження Ради («редакція не чинна», «текст змінено») мають лишитися помітними */
+html.praxis-night :is(.alert-warning, .alert-important) { background: #2a2313 !important; border-color: #4a3c17 !important; color: #ecd28a !important; }
+html.praxis-night :is(.alert-info, .alert-primary, .alert-secondary, .alert-light) { background: #172331 !important; border-color: #24384f !important; color: #b9d2ee !important; }
+html.praxis-night .alert-danger { background: #301819 !important; border-color: #542728 !important; color: #ffb4ae !important; }
+html.praxis-night .alert-success { background: #14271f !important; border-color: #214534 !important; color: #a9e6c2 !important; }
+html.praxis-night .alert a:not(.btn) { color: inherit !important; text-decoration: underline; }
+
+/* картка стану документа («Документ 2755-VI, чинний, поточна редакція…»):
+   у Ради тут чорний текст власними правилами — без цього блоку він зникає */
+html.praxis-night .doc, html.praxis-night .doc :is(div, abbr, b, span) { color: var(--pn-text) !important; }
+html.praxis-night .doc a { color: var(--pn-link) !important; }
+html.praxis-night .doc :is(.valid, .valid b) { color: var(--pn-green) !important; }
+html.praxis-night .doc :is(.invalid, .invalid b, .text-danger) { color: var(--pn-red) !important; }
+html.praxis-night .doc :is(.dat, .dat0, .dat b, .dat0 b) { color: var(--pn-link-h) !important; }
+html.praxis-night abbr[title] { text-decoration-color: var(--pn-muted); }
+
+/* зміст акта ліворуч */
+html.praxis-night aside :is(a, a.stru) { color: #b9b6ae !important; }
+html.praxis-night aside :is(a, a.stru):hover { color: var(--pn-head) !important; }
+html.praxis-night aside :is(li, ul) { border-color: var(--pn-line) !important; }
+
+/* ── сам текст закону ── */
+html.praxis-night #article { color: var(--pn-text) !important; -webkit-font-smoothing: antialiased; }
+html.praxis-night #article :is(p, td, th, li, div) { color: inherit; }
+html.praxis-night #article p { line-height: 1.62; }
+html.praxis-night #article :is(p, td, th, li),
+html.praxis-night #article :is(span, a)[class^="rvts"]:not(.rvts1, .rvts2, .rvts3, .rvts4, .rvts5, .rvts6, .rvts29, .rvts30, .rvts31, .rvts32, .rvts33, .rvts34, .rvts35, .rvts36, .rvts39, .rvts42, .rvts60, .rvts61, .rvts97, .rvts123) {
+  font-family: Charter, "Bitstream Charter", Georgia, "PT Serif", "Times New Roman", serif !important;
+}
+html.praxis-night #article :is(b, strong, .rvts9, .rvts15, .rvts23) { color: var(--pn-head); }
+/* примітки Ради про зміни — {Пункт … в редакції Закону …} */
+html.praxis-night #article span.rvts46 { color: var(--pn-muted); }
+html.praxis-night #article span.rvts46 a { color: #8fa6cf !important; }
+/* три кольори посилань Ради */
+html.praxis-night #article :is(.rvts1, .rvts2, .rvts4, .rvts6, .rvts8, .rvts10, .rvts12, .rvts14, .rvts16, .rvts18, .rvts20, .rvts22, .rvts24, .rvts26, .rvts28, .rvts30, .rvts32, .rvts34, .rvts36, .rvts38, .rvts41, .rvts43, .rvts45, .rvts47, .rvts49, .rvts51, .rvts53, .rvts55, .rvts57, .rvts59, .rvts61, .rvts63, .rvts65, .rvts67, .rvts69, .rvts71, .rvts73, .rvts75, .rvts77, .rvts79, .rvts81, .rvts83, .rvts85, .rvts87, .rvts89, .rvts91, .rvts93, .rvts95, .rvts96, .rvts97, .rvts98, .rvts100, .rvts101, .rvts105, .rvts106, .rvts108, .rvts109, .rvts110, .rvts117, .rvts119, .rvts122, .rvts124, .rvts127, .rvts128, .rvts129, .rvts130, .rvts131, .rvts133) { color: var(--pn-link) !important; }
+html.praxis-night #article :is(.rvts1, .rvts2, .rvts4, .rvts6, .rvts8, .rvts10, .rvts12, .rvts14, .rvts16, .rvts18, .rvts20, .rvts22, .rvts24, .rvts26, .rvts28, .rvts30, .rvts32, .rvts34, .rvts36, .rvts38, .rvts41, .rvts43, .rvts45, .rvts47, .rvts49, .rvts51, .rvts53, .rvts55, .rvts57, .rvts59, .rvts61, .rvts63, .rvts65, .rvts67, .rvts69, .rvts71, .rvts73, .rvts75, .rvts77, .rvts79, .rvts81, .rvts83, .rvts85, .rvts87, .rvts89, .rvts91, .rvts93, .rvts95, .rvts96, .rvts97, .rvts98, .rvts100, .rvts101, .rvts105, .rvts106, .rvts108, .rvts109, .rvts110, .rvts117, .rvts119, .rvts122, .rvts124, .rvts127, .rvts128, .rvts129, .rvts130, .rvts131, .rvts133):hover { color: var(--pn-link-h) !important; }
+html.praxis-night #article :is(.rvts99, .rvts104, .rvts107, .rvts112, .rvts115, .rvts116, .rvts120, .rvts121, .rvts123, .rvts125, .rvts126, .rvts132, .rvts134, .rvts135) { color: var(--pn-green) !important; }
+html.praxis-night #article :is(.rvts99, .rvts104, .rvts107, .rvts112, .rvts115, .rvts116, .rvts120, .rvts121, .rvts123, .rvts125, .rvts126, .rvts132, .rvts134, .rvts135):hover { color: var(--pn-green-h) !important; }
+html.praxis-night #article :is(.rvts102, .rvts103, .rvts111, .rvts113, .rvts114, .rvts118, .rvts136, .rvts137, .rvts138) { color: var(--pn-red) !important; }
+html.praxis-night #article :is(.rvts102, .rvts103, .rvts111, .rvts113, .rvts114, .rvts118, .rvts136, .rvts137, .rvts138):hover { color: var(--pn-red-h) !important; }
+/* таблиці: у розмітці Ради межі вписані в style="border: 1px solid #000000" */
+html.praxis-night #article :is(table, td, th, tr) { border-color: #3a3b47 !important; background-color: transparent !important; }
+html.praxis-night #article th { background-color: var(--pn-bg-2) !important; }
+/* формули й схеми — чорним по білому; перевертаємо, зберігаючи відтінки */
+html.praxis-night #article img { filter: invert(.9) hue-rotate(180deg); }
+
+/* ── власні елементи Praxis на сторінці ── */
+html.praxis-night .praxis-badge {
+  background: color-mix(in oklab, #8b87ff 14%, #15161b); color: #b9b6ff;
+  border-color: color-mix(in oklab, #8b87ff 35%, transparent);
+}
+html.praxis-night .praxis-badge--zir {
+  background: color-mix(in oklab, #67e8f9 10%, #15161b); color: #8fe3ef;
+  border-color: color-mix(in oklab, #67e8f9 30%, transparent);
+}
+html.praxis-night .praxis-badge--hist {
+  background: color-mix(in oklab, #e2a33c 12%, #15161b); color: #e9b765;
+  border-color: color-mix(in oklab, #e2a33c 32%, transparent);
+}
+html.praxis-night .praxis-badge:is(:hover, .is-active) { background: #6d68f0; border-color: #6d68f0; color: #fff; }
+html.praxis-night .praxis-badge--hist:hover { background: #b9791c; border-color: #b9791c; color: #fff; }
+html.praxis-night .praxis-badge.is-pinned { background: #c9821f; border-color: #c9821f; color: #fff; }
+html.praxis-night .praxis-ann-tag { background: #1c1d25; border-color: var(--pn-line); color: #85827c; }
+html.praxis-night .praxis-ann-tag:hover { background: #24252f; color: #b9b6ae; border-color: #3a3b47; }
+html.praxis-night .praxis-ann-tag[data-kind="force"] { background: #2a2313; border-color: #4a3c17; color: #e2a33c; }
+html.praxis-night .praxis-ann-court { background: #1b1c33; border-left-color: #8b87ff; }
+
+@media (prefers-reduced-motion: reduce) {
+  html.praxis-night body, html.praxis-night #page { transition: none; }
 }
