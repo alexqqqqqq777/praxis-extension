@@ -218,6 +218,10 @@ def main() -> int:
         print(f'сухий прогін: перевірки пройдено, {DIST} не чіпали')
         return 0
 
+    version_name = (json.loads((ROOT / 'manifest.json').read_text(encoding='utf-8'))
+                    .get('version', '0') + ' · '
+                    + datetime.datetime.now().strftime('%d.%m.%Y %H:%M'))
+
     if DIST.exists():
         shutil.rmtree(DIST)
     (DIST / 'src').mkdir(parents=True)
@@ -237,7 +241,10 @@ def main() -> int:
     # стороні без жодного запиту до вітрини. PRIVACY.md обіцяє протилежне.
     css = (ROOT / 'src' / 'rail.css').read_text(encoding='utf-8')
     cj = DIST / 'src' / 'content.js'
+    # Разом зі стилями вшиваємо час збірки: за ним скрипт у вкладці впізнає,
+    # що розширення вже оновили, а він лишився старий.
     cj.write_text('window.__PRAXIS_CSS__ = ' + json.dumps(css, ensure_ascii=False) + ';\n'
+                  + 'window.__PRAXIS_BUILD__ = ' + json.dumps(version_name) + ';\n'
                   + cj.read_text(encoding='utf-8'), encoding='utf-8')
     (DIST / 'src' / 'rail.css').unlink(missing_ok=True)
 
@@ -248,8 +255,7 @@ def main() -> int:
     # Півдня пішло на питання «а це вже оновлена збірка чи стара?»: і власник
     # не міг відповісти, і я. Розпаковане розширення на вигляд однакове, а
     # поводиться по-різному. Тепер дата відповідає замість здогадів.
-    stamp = datetime.datetime.now().strftime('%d.%m.%Y %H:%M')
-    m['version_name'] = m.get('version', '0') + ' · ' + stamp
+    m['version_name'] = version_name
     m['host_permissions'] = ['https://zakon.rada.gov.ua/*', host]
     m['content_security_policy'] = {'extension_pages':
         "script-src 'self'; object-src 'none'; "

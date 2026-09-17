@@ -17,7 +17,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const src = fs.readFileSync(path.join(ROOT, 'src', 'api.js'), 'utf8');
+// За замовчуванням перевіряємо вихідний файл; аргументом можна дати будь-який
+// інший — наприклад, той, що вже лежить у зібраному розширенні.
+const target = process.argv[2] || path.join(ROOT, 'src', 'api.js');
+const src = fs.readFileSync(target, 'utf8');
 
 // відповідь вітрини: по одній статті в кожному лічильнику
 const PAYLOAD = {
@@ -58,4 +61,4 @@ if (bad.length) {
   for (const b of bad) console.error('  ЗБІЙ ' + b);
   process.exit(1);
 }
-console.log('  ok   лічильники доходять до панелі: articles, zir, ecthr');
+console.log('  ok   лічильники доходять до панелі: articles, zir, ecthr  ·  ' + target);

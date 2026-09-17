@@ -278,6 +278,26 @@
   // Якщо стилі не доїхали, панель не має лягати на сторінку чотирмастами
   // пікселями сирих кнопок. Порожній catch саме це й дозволяв: юрист бачив
   // зіпсовану сторінку Ради й не розумів, хто винен.
+  /* Чи не застарів код у цій вкладці.
+   *
+   * Оновлення розширення не чіпає скрипти у вже відкритих сторінках: там і
+   * далі працює те, що завантажилося при відкритті. Розширення вже нове,
+   * сторінка — стара, і зовні це не відрізнити ніяк. Півдня пішло на «оновив,
+   * а не працює»: розділ ЄСПЛ був виправлений, у вкладці лишався код без нього.
+   *
+   * Збірка вшиває свій час у content.js і в manifest.version_name. Маніфест
+   * читається щоразу свіжий — якщо вони розійшлися, сторінку треба
+   * перезавантажити, і ми про це кажемо, а не мовчимо. */
+  function staleBuild() {
+    try {
+      const mine = window.__PRAXIS_BUILD__ || '';
+      const live = (chrome.runtime.getManifest().version_name || '');
+      return mine && live && mine !== live ? live : '';
+    } catch (e) {
+      return '';                    // поза розширенням або контекст уже знято
+    }
+  }
+
   const CSS_FALLBACK = ':host{all:initial}.rail,.fab{display:none}';
   (async () => {
     let css = window.__PRAXIS_CSS__ || '';
@@ -334,6 +354,7 @@
         </div>
 
         <div class="secs" data-slot="secs" hidden></div>
+        <div class="stale" data-slot="stale" hidden></div>
       </div>
 
       <div class="list"></div>
@@ -1579,7 +1600,19 @@
     return out;
   }
 
+  function renderStale() {
+    const el = $('[data-slot="stale"]');
+    if (!el) return;
+    const live = staleBuild();
+    el.hidden = !live;
+    if (live) {
+      el.innerHTML = 'Praxis оновлено до <b>' + esc(live) + '</b>. У цій вкладці '
+        + 'працює попередня версія — <b>перезавантажте сторінку</b>.';
+    }
+  }
+
   function renderSecs(num) {
+    renderStale();
     const el = $('[data-slot="secs"]');
     const secs = sections(num);
     // один розділ — перемикати нічого
