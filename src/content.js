@@ -230,6 +230,7 @@
     part: null,              // null — уся стаття; '' — посилання без вказівки частини
     partManual: false,       // користувач сам обрав частину — не перебивати скролом
     partArt: null,           // у якій СТАТТІ обрано: за її межами вибір не діє
+    zirState: 'actual',      // коментар ДПС: актуальні / історичні / неактуальні
     query: '',
     searchOn: false,
     expanded: new Set()
@@ -331,6 +332,8 @@
           <span data-slot="mode-text">Закріплено</span>
           <button data-act="unpin">слідувати за текстом</button>
         </div>
+
+        <div class="secs" data-slot="secs" hidden></div>
       </div>
 
       <div class="list"></div>
@@ -441,6 +444,8 @@
       try {
         const d = await API.counts(ACT);
         S.answered = true;                 // вітрина відповіла — питання лише в даних
+        if (d.since) DEPTH_SINCE = String(d.since);   // глибина зрізу для проміжків часу
+        if (d.zir) for (const [num, pair] of d.zir) ZIR_COUNTS.set(num, pair);
         if (d.articles && d.articles.size) {
           S.source = 'live';
           S.lawShort = d.law || S.lawShort;
@@ -531,6 +536,28 @@
       a.el.appendChild(document.createTextNode(' '));
       a.el.appendChild(b);
       a.badge = b;
+
+      // Бейдж ДПС — поруч, але іншим, холодним кольором: це джерело іншої
+      // ваги, і юрист має бачити різницю, не читаючи підписів.
+      const z = ZIR_COUNTS.get(num);
+      if (z && z[0]) {
+        const zb = h(`<span class="praxis-badge praxis-badge--zir" data-praxis-zir="${esc(num)}"
+            role="button" tabindex="0"
+            title="Роз'яснень ДПС (ЗІР), прив'язаних до цієї статті: ${fmtNum(z[0])}${
+              z[1] ? `, з них чинних ${fmtNum(z[1])}` : ''} · клік — розділ ДПС">
+            ДПС · ${fmtCompact(z[0])}</span>`);
+        a.el.appendChild(document.createTextNode(' '));
+        a.el.appendChild(zb);
+        const openZir = e => {
+          e.preventDefault(); e.stopPropagation();
+          S.pinned = num; S.peek = null; S.mode = 'zir';
+          if (!S.open) setOpen(true);
+          ensureZir(num); render();
+          listEl.scrollTo({ top: 0 });
+        };
+        zb.addEventListener('click', openZir);
+        zb.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openZir(e); });
+      }
 
       b.addEventListener('mouseenter', () => { S.peek = num; ensure(num); ensureNorms(num); render(); });
       b.addEventListener('mouseleave', () => { S.peek = null; render(); });
@@ -941,7 +968,7 @@
     if (S.flags.includes('actual')) act.push(['flag:actual', 'лише актуальні']);
     if (S.flags.includes('departure')) act.push(['flag:departure', 'змінили практику']);
     if (S.opinions) act.push(['opinions', 'з окремими думками']);
-    if (S.since) act.push(['since', 'за 3 роки']);
+    if (S.since) act.push(['since', (timeRanges().find(([y]) => y === S.since) || [null, 'з ' + S.since])[1]]);
     if (S.currentOnly) act.push(['current', 'чинна редакція']);
     if (S.query.trim()) act.push(['query', '«' + S.query.trim() + '»']);
 
@@ -976,7 +1003,9 @@
           + `<button class="f${S.opinions ? ' is-on' : ''}" data-act="opinions"`
           + ` title="окрема думка — позиція судді, а не суду; типово прихована">окремі думки</button>`)
       + group('Час і редакція',
-          `<button class="f${S.since ? ' is-on' : ''}" data-act="since" title="лише рішення останніх трьох років">за 3 роки</button>`
+          timeRanges().map(([y, label]) =>
+            `<button class="f${(S.since || null) === y ? ' is-on' : ''}" data-act="since-set"`
+            + ` data-y="${y === null ? '' : esc(y)}">${esc(label)}</button>`).join('')
           + (stale || S.currentOnly
               ? `<button class="f${S.currentOnly ? ' is-on' : ''}" data-act="current"`
                 + ` title="сховати рішення, ухвалені до останньої зміни статті">чинна редакція</button>` : ''))
@@ -1188,6 +1217,26 @@
    *  посеред статті, де все інше — пункти.
    */
   let NORM_WORD = '';
+
+  /** Готові проміжки часу — і лише ті, за які в зрізі є рішення.
+   *
+   *  Глибину каже сервер (`since` у відповіді `/articles`). Пропонувати «усі
+   *  з 2018», коли вітрина їде на зрізі з 2022, означало б обіцяти дані, яких
+   *  немає: юрист натиснув би й вирішив, що за 2018–2021 практики просто нема.
+   */
+  let DEPTH_SINCE = null;
+
+  /** {стаття: [усього роз'яснень ДПС, з них чинних]} — під бейдж і перемикач. */
+  const ZIR_COUNTS = new Map();
+
+  function timeRanges() {
+    const y = new Date().getFullYear();
+    const d = DEPTH_SINCE ? Number(DEPTH_SINCE) : null;
+    const out = [[null, d ? `усі з ${d}` : 'усі']];
+    if (d && d < 2022) out.push(['2022', 'з 2022']);
+    out.push([String(y - 2), 'останні 2 роки']);
+    return out;
+  }
 
   /** Людський підпис норми: ЦКУ «ч. 2», ПКУ «п. 140.5». */
   function normLabel(num, part) {
@@ -1481,6 +1530,178 @@
   }
 
   let lastShown;
+  /* ── розділи панелі ────────────────────────────────────────────────
+   *
+   *  Практика ВС і роз'яснення ДПС — джерела різної ваги, і змішувати їх в
+   *  одному списку не можна: юрист має бачити різницю без читання підписів.
+   *  Тому розділи, а не фільтр. Розділу без даних не існує взагалі.
+   */
+  const zirOf = new Map();
+
+  function zirKey(num) {
+    return [num, S.part == null ? '*' : S.part, S.zirState, S.query.trim()].join('|');
+  }
+
+  function ensureZir(num) {
+    if (!num || !API) return;
+    const key = zirKey(num);
+    const rec = zirOf.get(key);
+    if (rec && rec.state !== 'error') return;
+    if (rec && rec.state === 'error' && Date.now() - (rec.at || 0) < ERR_HOLD) return;
+    zirOf.set(key, { state: 'loading' });
+    API.zir(ACT, num, S.part, { state: S.zirState, q: S.query.trim() || null })
+      .then(d => { zirOf.set(key, { state: 'ready', ...d }); if (shown() === num) render(); })
+      .catch(e => { zirOf.set(key, { state: 'error', error: e.message, at: Date.now() }); if (shown() === num) render(); });
+  }
+
+  /** Які розділи має ця стаття. Порожніх не пропонуємо. */
+  function sections(num) {
+    const out = [['practice', 'ВС', (COUNTS.get(num) || [0])[0]]];
+    const z = ZIR_COUNTS.get(num);
+    if (z && z[0]) out.push(['zir', 'Коментар ДПС', z[0]]);
+    const v = versionsMap && versionsMap.get(num);
+    out.push(['history', 'Історія', v || 0]);
+    return out;
+  }
+
+  function renderSecs(num) {
+    const el = $('[data-slot="secs"]');
+    const secs = sections(num);
+    // один розділ — перемикати нічого
+    el.hidden = !num || secs.filter(x => x[2]).length < 2;
+    if (el.hidden) { el.innerHTML = ''; return; }
+    el.innerHTML = secs.map(([mode, label, n]) =>
+      `<button class="sec${S.mode === mode ? ' is-on' : ''}" data-act="sec" data-m="${mode}">`
+      + `${esc(label)}${n ? `<span class="sec__n">${fmtCompact(n)}</span>` : ''}</button>`).join('');
+  }
+
+  /* ── картка ДПС ─────────────────────────────────────────────────── */
+
+  const MONTHS = ['січ.', 'лют.', 'бер.', 'квіт.', 'трав.', 'черв.',
+                  'лип.', 'серп.', 'вер.', 'жовт.', 'лист.', 'груд.'];
+
+  /** Дата з чесною точністю: день, місяць або лише рік. */
+  function zirDate(it) {
+    const d = it.status === 'expired' ? it.valid_until : it.actual_to;
+    if (!d) return '';
+    const p = it.date_precision;
+    if (p === 'year') return d.slice(0, 4);
+    if (p === 'month') return MONTHS[Number(d.slice(5, 7)) - 1] + ' ' + d.slice(0, 4);
+    return fmtDate(d);
+  }
+
+  /* Три стани коментаря ДПС — ті самі, що юрист знає з практики.
+   *
+   *  Словник корпусу (expired / norm_changed / check / ok) сюди не доходить:
+   *  вчити ще одну систему позначок юрист не мусить.
+   */
+  const ZIR_STATE_LABEL = {
+    actual:   ['актуальний', 'ДПС не знімала цей коментар, і норма після нього не змінювалася.'],
+    historic: ['історичний', 'Коментар чинний, але текст названої норми вже інший — він пояснює, як було.'],
+    gone:     ['неактуальний', 'ДПС сама зняла цей коментар.']
+  };
+
+  function zirStateOf(it) {
+    if (it.status === 'expired') return 'gone';
+    if (it.verdict === 'norm_changed' || it.verdict === 'check') return 'historic';
+    return 'actual';
+  }
+
+  /** Одна позначка, найважча. Дві поруч читаються як дві різні біди. */
+  function zirMark(it) {
+    const st = zirStateOf(it);
+    if (st === 'gone') {
+      return ['neg', `неактуальний${it.valid_until ? ' · зняв ДПС ' + fmtDate(it.valid_until) : ''}`,
+              ZIR_STATE_LABEL.gone[1], null];
+    }
+    if (st === 'historic') {
+      // Наскільки сигнал вагомий, видно з core: 1 — змінену норму названо в
+      // самому питанні чи короткій відповіді, тобто коментар саме про неї;
+      // 0 — вона згадана лише в повній відповіді, і зміна може не стосуватися
+      // суті. Той самий стан, але не той самий привід турбуватися, тож і
+      // виглядає інакше — інакше юрист звикне не помічати бурштинове.
+      const soft = !it.core || it.verdict === 'check';
+      return [soft ? 'soft' : 'stale',
+              `історичний${soft ? ' · побіжно' : (it.change_date ? ' · норму змінено ' + fmtDate(it.change_date) : '')}`,
+              it.reason || ZIR_STATE_LABEL.historic[1],
+              it.change_date || null];
+    }
+    return null;                       // актуальний — без позначки, як у практиці
+  }
+
+  function zirHTML(it, num) {
+    const open = S.expanded.has('z' + it.zir_id);
+    const mark = zirMark(it);
+    const date = zirDate(it);
+    const cite = `ЗІР ДПС, категорія ${it.cat_code}, «${(it.question || '').trim()}»`
+      + (date ? `, ${it.status === 'expired' ? 'діяла до' : 'чинна станом на'} ${date}` : '');
+    return `
+      <article class="zcard${open ? ' is-open' : ''}" data-zid="${esc(it.zir_id)}">
+        <div class="zcard__head">
+          <span class="zcat" title="розділ ЗІР">${esc(it.cat_code)}${it.cat_name ? ' · ' + esc(it.cat_name) : ''}</span>
+          ${date ? `<span class="zdate">${esc(date)}</span>` : ''}
+          ${mark ? `<button class="zmark zmark--${mark[0]}" title="${esc(mark[2])}"
+                      ${mark[3] ? `data-act="zir-hist" data-on="${esc(mark[3])}"` : 'disabled'}
+                    >${esc(mark[1])}</button>` : ''}
+        </div>
+        <p class="zq">${esc(it.question)}</p>
+        <p class="za">${esc(it.short_answer || '')}</p>
+        ${it.full_answer && it.full_answer !== it.short_answer
+          ? `<div class="zfull" ${open ? '' : 'hidden'}>${esc(it.full_answer)}</div>
+             <button class="zmore" data-act="zir-more">${open ? 'згорнути' : 'повна відповідь'}</button>` : ''}
+        <div class="zcard__ft">
+          ${it.point ? `<span class="zpoint">${esc(normLabel(num, it.point))}</span>` : ''}
+          <a href="${esc(it.url)}" target="_blank" rel="noopener noreferrer">картка на zir.tax.gov.ua ↗</a>
+          <button data-act="zir-cite" data-cite="${esc(cite)}">копіювати посилання</button>
+        </div>
+      </article>`;
+  }
+
+  function renderZir(num) {
+    const rec = zirOf.get(zirKey(num));
+    const countEl = $('[data-slot="count"]');
+    if (!rec || rec.state === 'loading') {
+      countEl.textContent = '';
+      listEl.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+      return;
+    }
+    if (rec.state === 'error') {
+      countEl.textContent = '';
+      listEl.innerHTML = emptyHTML('Не вдалося завантажити позицію ДПС',
+        `Вітрина відповіла: ${esc(rec.error)}.`, null, 'retry');
+      return;
+    }
+    countEl.textContent = `${rec.found} коментар${rec.found === 1 ? '' : 'ів'} ДПС`;
+
+    // Межа, без якої розділ уводить в оману. ЗІР — довідковий ресурс: захист
+    // дає індивідуальна чи узагальнююча консультація (ст. 52–53 ПКУ), а не
+    // відповідь у «Запитаннях-Відповідях».
+    const note = `<div class="znote">Довідково. Відповідь ЗІР не є податковою
+        консультацією (ст. 52–53 ПКУ). Позиція органу, а не норма закону.</div>`;
+
+    // Звірка з історією норм рахується окремим нічним прогоном. Поки її немає,
+    // відсутність позначки не означає «все гаразд», і мовчати про це не можна.
+    const unchecked = rec.checked ? '' :
+      `<div class="znote znote--warn">Звірку з історією норм ще не пораховано.
+         Поки її немає, усі чинні коментарі показані як <b>актуальні</b>, хоча
+         частина з них насправді історичні: норму могли змінити після них.
+         Перевіряйте редакцію самі, доки тут не з'явиться поділ.</div>`;
+
+    const st = rec.states || {};
+    const chips = [['actual', 'актуальні'], ['historic', 'історичні'], ['gone', 'неактуальні']]
+      .map(([k, label]) =>
+        `<button class="zchip${S.zirState === k ? ' is-on' : ''}" data-act="zir-state" data-s="${k}"`
+        + `${st[k] ? '' : ' disabled'} title="${esc(ZIR_STATE_LABEL[k][1])}">`
+        + `${label}${st[k] ? `<span class="sec__n">${st[k]}</span>` : ''}</button>`).join('');
+    const more = `<div class="zchips">${chips}</div>`;
+
+    listEl.innerHTML = note + unchecked + more
+      + (rec.items.length
+          ? rec.items.map(it => zirHTML(it, num)).join('')
+          : emptyHTML('Чинних роз’яснень немає',
+              'ДПС не має такого коментаря, прив’язаного до цієї норми.', null));
+  }
+
   function render() {
     const num = shown();
     if (num !== lastShown) {              // фільтр і розгорнуті картки — стан однієї статті
@@ -1516,6 +1737,14 @@
 
     renderParts(num);
     renderFilters(num);
+    renderSecs(num);
+
+    if (S.mode === 'zir') {
+      ensureZir(num);
+      renderZir(num);
+      positionMarker(num);
+      return;
+    }
 
     if (S.mode === 'history') {
       ensureHistory(num);
@@ -1769,7 +1998,37 @@
       if (a === 'close') { setOpen(false); return; }
       if (a === 'retry') { retry(shown()); return; }
       if (a === 'since') {
-        S.since = S.since ? null : String(new Date().getFullYear() - 3);
+        S.since = S.since ? null : String(new Date().getFullYear() - 3);   // стара кнопка, лишається для сумісності
+        refetch(); return;
+      }
+      if (a === 'sec') {
+        S.mode = act.dataset.m;
+        S.expanded.clear();
+        if (S.mode === 'zir') ensureZir(shown());
+        render(); listEl.scrollTo({ top: 0 });
+        return;
+      }
+      if (a === 'zir-more') {
+        const c = act.closest('.zcard');
+        const id = 'z' + c.dataset.zid;
+        if (S.expanded.has(id)) S.expanded.delete(id); else S.expanded.add(id);
+        render(); return;
+      }
+      if (a === 'zir-cite') {
+        navigator.clipboard.writeText(act.dataset.cite)
+          .then(() => toast('Скопійовано'), () => toast('Не вдалося скопіювати'));
+        return;
+      }
+      if (a === 'zir-hist') {
+        // той самий жест, що в картках практики: бурштинове веде в диф норми
+        S.mode = 'history'; S.onDate = act.dataset.on || '';
+        ensureHistory(shown()); render(); listEl.scrollTo({ top: 0 });
+        return;
+      }
+      if (a === 'zir-state') { S.zirState = act.dataset.s; ensureZir(shown()); render(); return; }
+      if (a === 'since-set') {
+        const y = act.dataset.y || null;
+        S.since = (S.since || null) === y ? null : y;   // повторний клік знімає
         refetch(); return;
       }
       if (a === 'current') { S.currentOnly = !S.currentOnly; render(); return; }

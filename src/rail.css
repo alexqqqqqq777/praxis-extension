@@ -19,6 +19,8 @@
   --accent-2:  #4338ca;
   --accent-bg: #eef0fe;
   --warn:      #b45309;
+  --zir:       #0e7490;
+  --zir-bg:    #e0f2fe;
   --warn-bg:   #fdf3e3;
   --danger:    #b91c1c;
   --danger-bg: #fdeaea;
@@ -96,6 +98,8 @@
   --accent-2:  #a5a1ff;
   --accent-bg: #1c1b33;
   --warn:      #e2a33c;
+  --zir:       #67e8f9;
+  --zir-bg:    #0d2b33;
   --warn-bg:   #2a2114;
   --danger:    #f87171;
   --danger-bg: #331616;
@@ -1005,3 +1009,58 @@ kbd {
   background: var(--warn-bg); color: var(--warn);
   font-size: 11.5px; line-height: 1.5;
 }
+
+/* ── розділи панелі ───────────────────────────────────────────────────── */
+.secs { display: flex; gap: 4px; padding: 6px 10px 0; }
+.sec {
+  all: unset; cursor: pointer; padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; color: var(--text-2); border: 1px solid transparent;
+}
+.sec:hover { background: var(--surface-2); }
+.sec.is-on { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
+.sec__n { margin-left: 5px; opacity: .7; font-variant-numeric: tabular-nums; }
+
+/* ── картка ДПС ───────────────────────────────────────────────────────── */
+.znote {
+  margin: 8px 10px; padding: 6px 9px; border-radius: 6px;
+  background: var(--surface-2); color: var(--text-2); font-size: 11px; line-height: 1.45;
+}
+.znote--warn { background: var(--warn-bg); color: var(--warn); }
+
+.zcard {
+  margin: 8px 10px; padding: 9px 11px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.zcard__head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 5px; }
+.zcat { font-size: 11px; color: var(--zir); background: var(--zir-bg); padding: 1px 6px; border-radius: 4px; }
+.zdate { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.zmark {
+  all: unset; font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: auto;
+}
+.zmark[data-act] { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.zmark--neg   { background: var(--danger-bg); color: var(--danger); }
+.zmark--stale { background: var(--warn-bg);   color: var(--warn); }
+.zmark--warn  { background: var(--surface-2);     color: var(--text-2); }
+.zmark--soft  { background: var(--surface-2);     color: var(--text-2); }
+
+.zq { margin: 0 0 4px; font-weight: 600; font-size: 12.5px; line-height: 1.45; color: var(--text); }
+.za { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+.zfull { margin-top: 6px; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; color: var(--text); }
+.zmore { all: unset; cursor: pointer; font-size: 11px; color: var(--accent); margin-top: 5px; display: inline-block; }
+.zcard__ft { display: flex; gap: 8px; align-items: center; margin-top: 7px; font-size: 11px; flex-wrap: wrap; }
+.zcard__ft a, .zcard__ft button { color: var(--text-2); }
+.zcard__ft button { all: unset; cursor: pointer; color: var(--text-2); }
+.zcard__ft button:hover, .zcard__ft a:hover { color: var(--accent); }
+.zpoint { color: var(--zir); }
+.zchips { display: flex; gap: 5px; padding: 2px 10px 6px; }
+.zchip {
+  all: unset; cursor: pointer; padding: 3px 9px; border-radius: 999px;
+  font-size: 11.5px; color: var(--text-2); border: 1px solid var(--line);
+}
+.zchip:hover:not([disabled]) { background: var(--surface-2); }
+.zchip.is-on { background: var(--zir-bg); color: var(--zir); border-color: var(--zir); }
+.zchip[disabled] { opacity: .4; cursor: default; }
+
+.zshow { all: unset; cursor: pointer; display: block; margin: 10px; font-size: 11.5px; color: var(--accent); }
+
+.praxis-badge--zir { background: var(--zir-bg) !important; color: var(--zir) !important; }

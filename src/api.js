@@ -117,7 +117,9 @@
       const out = {
         law: d.law || null,
         lawTitle: d.law_title || null,
-        articles: new Map(Object.entries(d.articles || {}))
+        since: d.since || null,          // глибина зрізу: з якого року є практика
+        articles: new Map(Object.entries(d.articles || {})),
+        zir: new Map(Object.entries(d.zir || {}))
       };
       cache.set(key, out);
       return out;
@@ -173,6 +175,18 @@
                     future: new Map(Object.entries(d.future || {})) };
       cache.set(key, out);
       return out;
+    },
+
+    /** Позиція ДПС (ЗІР) — роз'яснення, прив'язані до норми. */
+    async zir(act, article, part, o) {
+      o = o || {};
+      const p = { act, article, limit: o.limit || 20 };
+      if (part != null) p.part = part;
+      if (o.state) p.state = o.state;
+      if (o.cat) p.cat = o.cat;
+      if (o.q) p.q = o.q;
+      if (o.offset) p.offset = o.offset;
+      return call('/zir', p, TIMEOUT.cards);
     },
 
     /** Історія редакцій статті (або однієї її норми) */

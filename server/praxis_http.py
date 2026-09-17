@@ -223,6 +223,26 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
                         return self._send(400, {'error': 'need act and article'})
                     return self._send(200, core.norms_map(act, article))
 
+                if u.path == '/zir':            # позиція ДПС поруч із нормою
+                    act, article = arg('act'), arg('article')
+                    if not act or not article:
+                        return self._send(400, {'error': 'need act and article'})
+                    part = q.get('part')
+                    try:
+                        limit = max(1, min(100, int((q.get('limit') or ['20'])[0])))
+                    except ValueError:
+                        limit = 20
+                    try:
+                        offset = max(0, int((q.get('offset') or ['0'])[0]))
+                    except ValueError:
+                        offset = 0
+                    st = arg('state')
+                    return self._send(200, core.get_zir(
+                        act, article, core.clean_part(part[0]) if part else None,
+                        state=st if st in core.ZIR_STATES else 'actual',
+                        cat=arg('cat') or None, q=arg('q') or None,
+                        limit=limit, offset=offset))
+
                 if u.path == '/cards':
                     act, article = arg('act'), arg('article')
                     if not act or not article:
