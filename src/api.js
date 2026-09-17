@@ -119,7 +119,13 @@
         lawTitle: d.law_title || null,
         since: d.since || null,          // глибина зрізу: з якого року є практика
         articles: new Map(Object.entries(d.articles || {})),
-        zir: new Map(Object.entries(d.zir || {}))
+        zir: new Map(Object.entries(d.zir || {})),
+        // Без цього рядка розділу ЄСПЛ не існувало: вітрина лічильники
+        // віддавала, транспорт їх мовчки викидав, панель не мала чого
+        // показати — і кнопка не з'являлася в жодній статті. Маршрути я
+        // перевіряв curl-ом, панель — ні, і дефект жив рівно в цьому
+        // проміжку.
+        ecthr: new Map(Object.entries(d.ecthr || {}))
       };
       cache.set(key, out);
       return out;
