@@ -31,7 +31,7 @@
 
 Запуск: PRAXIS_TOKEN=… python3 tools/build-release.py [--base https://…]
 """
-import argparse, json, os, pathlib, shutil, subprocess, sys
+import argparse, json, os, pathlib, shutil, subprocess, sys, urllib.error, urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DIST = ROOT / 'dist'
@@ -88,6 +88,8 @@ def main() -> int:
                     help='ключ доступу до вітрини (або змінна PRAXIS_TOKEN)')
     ap.add_argument('--skip-checks', action='store_true',
                     help='без перевірок — лише коли зрізу немає під рукою')
+    ap.add_argument('--dry-run', action='store_true',
+                    help='лише перевірки, dist/ не чіпати')
     a = ap.parse_args()
 
     base = a.base.rstrip('/')
@@ -173,6 +175,38 @@ def main() -> int:
                 print('дим червоний: реліз не збирається', file=sys.stderr)
                 return 1
             print('· дим:', tail[0].strip())
+
+    # Ключ має бути ТОЙ, який вітрина приймає. Перевіряємо до збірки.
+    #
+    # Історія коротка й дорога. Щоб подивитися, як реліз поводиться без ядра,
+    # я двічі зібрав dist із ключем `testkey123` — у відкритому репозиторії.
+    # Саме звідти Chrome власника вантажив розширення. Панель писала «немає
+    # звʼязку», вітрина віддавала 401, і три мої пояснення поспіль були про
+    # інше: збережену адресу, /health, кеш браузера. Збірка з ключем, якого
+    # вітрина не приймає, — це мертва збірка, і дізнаватися про це має не
+    # юрист із порожньою панеллю.
+    if not a.skip_checks:
+        probe = origin + '/act?nreg=435-15'
+        try:
+            req = urllib.request.Request(probe, headers={'X-Praxis-Key': key})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                r.read(64)
+            print('· ключ: вітрина приймає')
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                print(f'вітрина {origin} НЕ приймає цей ключ (401).\n'
+                      'Зібрана з ним збірка не покаже жодної картки.', file=sys.stderr)
+                return 1
+            print(f'· ключ перевірити не вдалося: вітрина відповіла {e.code}')
+        except OSError as e:
+            # Збирати без мережі можна — але мовчки вдавати, що перевірили, ні.
+            print(f'· ключ НЕ перевірено: вітрина недоступна ({type(e).__name__})')
+
+    if a.dry_run:
+        # Саме цього мені бракувало, коли я перевіряв поведінку збірки без ядра
+        # й переписав чужу робочу теку тестовим ключем.
+        print(f'сухий прогін: перевірки пройдено, {DIST} не чіпали')
+        return 0
 
     if DIST.exists():
         shutil.rmtree(DIST)
