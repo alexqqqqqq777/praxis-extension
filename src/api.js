@@ -177,6 +177,18 @@
       return out;
     },
 
+    /** Справи ЄСПЛ, які ВС цитує поруч із цією нормою. */
+    async ecthr(act, article, part) {
+      const p = { act, article };
+      if (part != null) p.part = part;
+      return call('/ecthr', p, TIMEOUT.cards);
+    },
+
+    /** Рішення ВС, де ця справа ЄСПЛ стоїть поруч із нормою. */
+    async ecthrDocs(kase, act, article) {
+      return call('/ecthr/docs', { case: kase, act, article }, TIMEOUT.cards);
+    },
+
     /** Позиція ДПС (ЗІР) — роз'яснення, прив'язані до норми. */
     async zir(act, article, part, o) {
       o = o || {};

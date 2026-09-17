@@ -1064,3 +1064,31 @@ kbd {
 .zshow { all: unset; cursor: pointer; display: block; margin: 10px; font-size: 11.5px; color: var(--accent); }
 
 .praxis-badge--zir { background: var(--zir-bg) !important; color: var(--zir) !important; }
+
+/* ── розділ ЄСПЛ ─────────────────────────────────────────────────────── */
+.ecard { margin: 8px 10px; padding: 9px 11px; border-radius: 8px;
+         background: var(--surface); border: 1px solid var(--line); }
+.ecard__head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.ecname { font-weight: 600; font-size: 12.5px; color: var(--text); }
+.ecst { font-size: 11px; color: var(--text-3); letter-spacing: .04em; }
+.ecimp { font-size: 11px; color: var(--text-2); margin-left: auto; }
+.ecfs { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0 0; }
+.ecf { font-size: 11px; padding: 1px 6px; border-radius: 4px; }
+.ecf--v { background: var(--danger-bg); color: var(--danger); }
+.ecf--n { background: var(--ok-bg); color: var(--ok); }
+.ectrust { margin-top: 6px; font-size: 11.5px; color: var(--text-2); line-height: 1.5; }
+.ecard__ft { display: flex; gap: 8px; align-items: center; margin-top: 7px; font-size: 11px; flex-wrap: wrap; }
+.ecard__ft a, .ecard__ft button { color: var(--text-2); }
+.ecard__ft button { all: unset; cursor: pointer; color: var(--accent); }
+.ecblind { margin-top: 7px; padding: 5px 8px; border-radius: 6px;
+           background: var(--surface-2); color: var(--text-2); font-size: 11px; line-height: 1.45; }
+.ecdocs { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 7px; font-size: 11.5px; }
+.ecdoc { margin-bottom: 7px; }
+.ecdoc__s { color: var(--text-2); line-height: 1.5; margin-top: 2px; }
+.ecrit { margin: 10px; font-size: 11.5px; color: var(--text-2); }
+.ecrit summary { cursor: pointer; }
+.ecrit__i { padding: 3px 0 0 12px; }
+
+.ectags { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 5px; }
+.ectag { all: unset; cursor: pointer; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+         background: var(--accent-bg); color: var(--accent); }

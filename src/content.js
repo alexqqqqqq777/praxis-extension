@@ -446,6 +446,7 @@
         S.answered = true;                 // вітрина відповіла — питання лише в даних
         if (d.since) DEPTH_SINCE = String(d.since);   // глибина зрізу для проміжків часу
         if (d.zir) for (const [num, pair] of d.zir) ZIR_COUNTS.set(num, pair);
+        if (d.ecthr) for (const [num, n] of d.ecthr) ECTHR_COUNTS.set(num, n);
         if (d.articles && d.articles.size) {
           S.source = 'live';
           S.lawShort = d.law || S.lawShort;
@@ -821,9 +822,18 @@
     else if (it.raw) stats.push(`<span>згадка: <b>${esc(it.raw)}</b></span>`);
     if (it.relevance != null) stats.push(`<span>релевантність <b>${Math.round(it.relevance * 100)}%</b></span>`);
 
+    // Справи ЄСПЛ, які суд назвав у тому самому абзаці, де застосував норму.
+    // Це не «схоже рішення», а те, на що послався сам суд, — тож мітка, а не
+    // підказка. Клік веде в розділ ЄСПЛ на цю справу.
+    const ec = (it.ecthr || []).map(e =>
+      `<button class="ectag" data-act="ec-open" data-case="${esc(e.case_key)}"`
+      + ` title="Суд послався на це рішення ЄСПЛ у тому самому абзаці">`
+      + `ЄСПЛ: ${esc((e.name || '').split(' проти ')[0])}</button>`).join('');
+
     return `
       <article class="card${open ? ' is-open' : ''} lvl-${(statusOf(it) || {}).cls || 'none'}" data-kind="${esc(it.kind)}" data-id="${esc(id)}" data-art="${esc(num)}"
                style="animation-delay:${Math.min(idx, 6) * 28}ms">
+        ${ec ? `<div class="ectags">${ec}</div>` : ''}
         <div class="card__head">
           <span class="court" data-c="${courtKind(it.court)}">${esc(it.court)}</span>
           ${it.form === 10 ? `<span class="opin" title="окрема думка судді — це не позиція суду">окрема думка</span>` : ''}
@@ -1229,6 +1239,9 @@
   /** {стаття: [усього роз'яснень ДПС, з них чинних]} — під бейдж і перемикач. */
   const ZIR_COUNTS = new Map();
 
+  /** {стаття: скільки справ ЄСПЛ у мості} — під розділ і бейдж. */
+  const ECTHR_COUNTS = new Map();
+
   function timeRanges() {
     const y = new Date().getFullYear();
     const d = DEPTH_SINCE ? Number(DEPTH_SINCE) : null;
@@ -1559,6 +1572,8 @@
     const out = [['practice', 'ВС', (COUNTS.get(num) || [0])[0]]];
     const z = ZIR_COUNTS.get(num);
     if (z && z[0]) out.push(['zir', 'Коментар ДПС', z[0]]);
+    const e = ECTHR_COUNTS.get(num);
+    if (e) out.push(['ecthr', 'ЄСПЛ', e]);
     const v = versionsMap && versionsMap.get(num);
     out.push(['history', 'Історія', v || 0]);
     return out;
@@ -1702,6 +1717,123 @@
               'ДПС не має такого коментаря, прив’язаного до цієї норми.', null));
   }
 
+  /* ── розділ ЄСПЛ ──────────────────────────────────────────────────────
+   *
+   *  У практиці ЄСПЛ українських норм немає — Суд говорить мовою Конвенції.
+   *  Міст будує сам ВС: він цитує справу в тому самому абзаці, де застосовує
+   *  норму. Тому це не «схожі рішення», а те, на що послався суд.
+   */
+  const ecOf = new Map();
+
+  function ecKey(num) { return num + '|' + (S.part == null ? '*' : S.part); }
+
+  function ensureEcthr(num) {
+    if (!num || !API) return;
+    const key = ecKey(num);
+    const rec = ecOf.get(key);
+    if (rec && rec.state !== 'error') return;
+    if (rec && rec.state === 'error' && Date.now() - (rec.at || 0) < ERR_HOLD) return;
+    ecOf.set(key, { state: 'loading' });
+    API.ecthr(ACT, num, S.part)
+      .then(d => { ecOf.set(key, { state: 'ready', ...d }); if (shown() === num) render(); })
+      .catch(e => { ecOf.set(key, { state: 'error', error: e.message, at: Date.now() }); if (shown() === num) render(); });
+  }
+
+  // Рівні HUDOC, словами. 1 — те, що Суд сам вважає ключовим.
+  const EC_IMPORTANCE = { 1: 'ключова', 2: 'висока важливість',
+                          3: 'середня важливість', 4: 'низька важливість' };
+  const EC_OUTCOME = { violation: 'порушення', no_violation: 'без порушення',
+                       just_satisfaction: 'справедлива сатисфакція' };
+
+  function ecFindings(c) {
+    return (c.findings || []).slice(0, 6).map(f =>
+      `<span class="ecf ecf--${f.outcome === 'violation' ? 'v' : 'n'}">`
+      + `${esc(f.article)} — ${esc(EC_OUTCOME[f.outcome] || f.outcome)}</span>`).join('');
+  }
+
+  /** Рядок довіри: чим саме цей міст підпертий. */
+  function ecTrust(c) {
+    const bits = [`ВС цитує поруч із цією нормою: <b>${c.docs}</b>`];
+    if (c.gc_docs) bits.push(`з них ${c.gc_docs} — Велика Палата`);
+    if (c.last_date) bits.push(`востаннє ${fmtDate(c.last_date)}`);
+    return bits.join(', ');
+  }
+
+  function ecCardHTML(c, num) {
+    const open = S.expanded.has('e' + c.case_key);
+    const rada = c.vru_nreg ? RADA + encodeURIComponent(c.vru_nreg) : null;
+    return `
+      <article class="ecard${open ? ' is-open' : ''}" data-case="${esc(c.case_key)}">
+        <div class="ecard__head">
+          <span class="ecname">${esc(c.name || c.name_en || c.case_key)}</span>
+          ${c.state ? `<span class="ecst">${esc(c.state)}</span>` : ''}
+          ${c.date ? `<span class="zdate">${esc(String(c.date).slice(0, 4))}</span>` : ''}
+          ${c.importance ? `<span class="ecimp">${esc(EC_IMPORTANCE[c.importance] || '')}</span>` : ''}
+        </div>
+        ${c.findings && c.findings.length ? `<div class="ecfs">${ecFindings(c)}</div>` : ''}
+        <div class="ectrust">${ecTrust(c)}</div>
+        <div class="ecard__ft">
+          <button data-act="ec-docs">рішення ВС · ${c.docs}</button>
+          <a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">HUDOC ↗</a>
+          ${rada ? `<a href="${esc(rada)}" target="_blank" rel="noopener noreferrer">переклад на Раді ↗</a>` : ''}
+        </div>
+        ${c.unseen_successors ? `<div class="ecblind">ще <b>${c.unseen_successors}</b>
+           пізніших рішень ЄСПЛ спираються на цю справу; ВС їх не цитував</div>` : ''}
+        ${open ? `<div class="ecdocs" data-slot="ecdocs-${esc(c.case_key)}">завантажую…</div>` : ''}
+      </article>`;
+  }
+
+  function renderEcthr(num) {
+    const rec = ecOf.get(ecKey(num));
+    const countEl = $('[data-slot="count"]');
+    if (!rec || rec.state === 'loading') {
+      countEl.textContent = '';
+      listEl.innerHTML = '<div class="skel"></div><div class="skel"></div>';
+      return;
+    }
+    if (rec.state === 'error') {
+      countEl.textContent = '';
+      listEl.innerHTML = emptyHTML('Не вдалося завантажити розділ ЄСПЛ',
+        `Вітрина відповіла: ${esc(rec.error)}.`, null, 'retry');
+      return;
+    }
+    countEl.textContent = `${rec.cases.length} справ ЄСПЛ`;
+
+    // Обсяг має бути названий. Інакше юрист вирішить, що це справи саме про
+    // ту частину, яку він читає, — а вони можуть бути по статті загалом.
+    const scope = (S.part != null && rec.scope === 'article')
+      ? `<div class="znote">Для <b>${esc(normLabel(num, S.part))}</b> окремого мосту немає —
+           показано справи, які ВС цитує при статті ${esc(num)} загалом.</div>` : '';
+
+    const ritual = (rec.ritual && rec.ritual.length)
+      ? `<details class="ecrit"><summary>стандартні посилання на ст. 6 Конвенції: ${rec.ritual.length}</summary>
+           ${rec.ritual.map(c => `<div class="ecrit__i">${esc(c.name || c.case_key)}
+             <span class="zdate">${esc(String(c.date || '').slice(0, 4))}</span></div>`).join('')}
+         </details>` : '';
+
+    listEl.innerHTML = scope
+      + (rec.cases.length
+          ? rec.cases.map(c => ecCardHTML(c, num)).join('')
+          : emptyHTML('Мосту до ЄСПЛ немає',
+              'ВС не цитував рішень ЄСПЛ в одному абзаці з цією нормою.', null))
+      + ritual;
+
+    // догрузка переліку рішень ВС для розгорнутих карток
+    for (const c of rec.cases) {
+      if (!S.expanded.has('e' + c.case_key)) continue;
+      const slot = $(`[data-slot="ecdocs-${c.case_key}"]`);
+      if (!slot || slot.dataset.done) continue;
+      slot.dataset.done = '1';
+      API.ecthrDocs(c.case_key, ACT, num).then(d => {
+        slot.innerHTML = (d.docs || []).slice(0, 8).map(x =>
+          `<div class="ecdoc"><a href="${esc(x.edrsr_url)}" target="_blank" rel="noopener noreferrer">`
+          + `${esc(x.court_name)} · ${esc(fmtDate(x.date))} · ${esc(x.cause_num)} ↗</a>`
+          + `<div class="ecdoc__s">${esc(x.snippet || '')}</div></div>`).join('')
+          || 'нічого не знайшлося';
+      }).catch(e => { slot.textContent = 'не вдалося завантажити: ' + e.message; });
+    }
+  }
+
   function render() {
     const num = shown();
     if (num !== lastShown) {              // фільтр і розгорнуті картки — стан однієї статті
@@ -1738,6 +1870,13 @@
     renderParts(num);
     renderFilters(num);
     renderSecs(num);
+
+    if (S.mode === 'ecthr') {
+      ensureEcthr(num);
+      renderEcthr(num);
+      positionMarker(num);
+      return;
+    }
 
     if (S.mode === 'zir') {
       ensureZir(num);
@@ -2005,6 +2144,7 @@
         S.mode = act.dataset.m;
         S.expanded.clear();
         if (S.mode === 'zir') ensureZir(shown());
+        if (S.mode === 'ecthr') ensureEcthr(shown());
         render(); listEl.scrollTo({ top: 0 });
         return;
       }
@@ -2024,6 +2164,19 @@
         S.mode = 'history'; S.onDate = act.dataset.on || '';
         ensureHistory(shown()); render(); listEl.scrollTo({ top: 0 });
         return;
+      }
+      if (a === 'ec-open') {
+        S.mode = 'ecthr';
+        S.expanded.clear();
+        S.expanded.add('e' + act.dataset.case);
+        ensureEcthr(shown()); render(); listEl.scrollTo({ top: 0 });
+        return;
+      }
+      if (a === 'ec-docs') {
+        const c = act.closest('.ecard');
+        const id = 'e' + c.dataset.case;
+        if (S.expanded.has(id)) S.expanded.delete(id); else S.expanded.add(id);
+        render(); return;
       }
       if (a === 'zir-state') { S.zirState = act.dataset.s; ensureZir(shown()); render(); return; }
       if (a === 'since-set') {

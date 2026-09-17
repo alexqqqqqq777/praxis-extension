@@ -223,6 +223,24 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
                         return self._send(400, {'error': 'need act and article'})
                     return self._send(200, core.norms_map(act, article))
 
+                if u.path == '/ecthr':          # справи ЄСПЛ поруч із нормою
+                    act, article = arg('act'), arg('article')
+                    if not act or not article:
+                        return self._send(400, {'error': 'need act and article'})
+                    part = q.get('part')
+                    try:
+                        limit = max(1, min(60, int((q.get('limit') or ['20'])[0])))
+                    except ValueError:
+                        limit = 20
+                    return self._send(200, core.get_ecthr(
+                        act, article, core.clean_part(part[0]) if part else None, limit))
+
+                if u.path == '/ecthr/docs':     # рішення ВС, де справа поруч із нормою
+                    case, act, article = arg('case'), arg('act'), arg('article')
+                    if not case or not act or not article:
+                        return self._send(400, {'error': 'need case, act and article'})
+                    return self._send(200, core.ecthr_docs(case, act, article))
+
                 if u.path == '/zir':            # позиція ДПС поруч із нормою
                     act, article = arg('act'), arg('article')
                     if not act or not article:
