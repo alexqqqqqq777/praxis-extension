@@ -1047,6 +1047,15 @@ kbd {
 .za { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text); }
 .zfull { margin-top: 6px; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; color: var(--text); }
 .zmore { all: unset; cursor: pointer; font-size: 11px; color: var(--accent); margin-top: 5px; display: inline-block; }
+/* побіжна згадка: та сама картка, але помітно тихіша — це інша вага */
+.zcard--aside { opacity: .72; }
+.zcard--aside:hover, .zcard--aside.is-open { opacity: 1; }
+.zsplit {
+  margin: 10px 10px 4px; padding-top: 8px; border-top: 1px dashed var(--line);
+  font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: .03em;
+}
+.sec__n--aside { opacity: .45; font-style: italic; }
+.eclink--none { color: var(--text-2); opacity: .6; cursor: help; }
 .zcard__ft { display: flex; gap: 8px; align-items: center; margin-top: 7px; font-size: 11px; flex-wrap: wrap; }
 .zcard__ft a, .zcard__ft button { color: var(--text-2); }
 .zcard__ft button { all: unset; cursor: pointer; color: var(--text-2); }

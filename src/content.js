@@ -561,13 +561,20 @@
 
       // Бейдж ДПС — поруч, але іншим, холодним кольором: це джерело іншої
       // ваги, і юрист має бачити різницю, не читаючи підписів.
+      // Число на бейджі — відповіді, де стаття названа в питанні, а не будь-де
+      // в тексті. Інакше ст. 1 ПКУ мала «ДПС · 60» з нуля відповідей про ст. 1:
+      // усі шістдесят — вступне «ПКУ регулює відносини… (п. 1.1 ст. 1)» у тілі
+      // відповіді про перехідні положення. Побіжні згадки лишаються в розділі.
       const z = ZIR_COUNTS.get(num);
-      if (z && z[0]) {
+      const named = zirNamed(z);
+      if (named) {
+        const aside = z[0] - named;
         const zb = h(`<span class="praxis-badge praxis-badge--zir" data-praxis-zir="${esc(num)}"
             role="button" tabindex="0"
-            title="Роз'яснень ДПС (ЗІР), прив'язаних до цієї статті: ${fmtNum(z[0])}${
-              z[1] ? `, з них чинних ${fmtNum(z[1])}` : ''} · клік — розділ ДПС">
-            ДПС · ${fmtCompact(z[0])}</span>`);
+            title="Роз'яснень ДПС (ЗІР) про цю статтю: ${fmtNum(named)}${
+              aside ? `, ще ${fmtNum(aside)} згадують її побіжно` : ''}${
+              z[1] ? ` · чинних серед усіх: ${fmtNum(z[1])}` : ''} · клік — розділ ДПС">
+            ДПС · ${fmtCompact(named)}</span>`);
         a.el.appendChild(document.createTextNode(' '));
         a.el.appendChild(zb);
         const openZir = e => {
@@ -1589,10 +1596,16 @@
   }
 
   /** Які розділи має ця стаття. Порожніх не пропонуємо. */
+  /** Скільки відповідей ДПС — саме про статтю. Вітрина старої форми третього
+   *  числа не віддає — тоді поводимося як досі, а не гасимо всі бейджі разом. */
+  function zirNamed(z) { return !z ? 0 : (z.length >= 3 ? (z[2] || 0) : z[0]); }
+
   function sections(num) {
     const out = [['practice', 'ВС', (COUNTS.get(num) || [0])[0]]];
     const z = ZIR_COUNTS.get(num);
-    if (z && z[0]) out.push(['zir', 'Коментар ДПС', z[0]]);
+    // лічильник — відповіді про саму норму; коли таких немає, а побіжні є,
+    // розділ лишається доступним, але число приглушене: це інша вага
+    if (z && z[0]) out.push(['zir', 'Коментар ДПС', zirNamed(z) || z[0], !zirNamed(z)]);
     const e = ECTHR_COUNTS.get(num);
     if (e) out.push(['ecthr', 'ЄСПЛ', e]);
     const v = versionsMap && versionsMap.get(num);
@@ -1618,9 +1631,10 @@
     // один розділ — перемикати нічого
     el.hidden = !num || secs.filter(x => x[2]).length < 2;
     if (el.hidden) { el.innerHTML = ''; return; }
-    el.innerHTML = secs.map(([mode, label, n]) =>
-      `<button class="sec${S.mode === mode ? ' is-on' : ''}" data-act="sec" data-m="${mode}">`
-      + `${esc(label)}${n ? `<span class="sec__n">${fmtCompact(n)}</span>` : ''}</button>`).join('');
+    el.innerHTML = secs.map(([mode, label, n, aside]) =>
+      `<button class="sec${S.mode === mode ? ' is-on' : ''}" data-act="sec" data-m="${mode}"${
+        aside ? ' title="Прямих відповідей про цю норму немає — лише побіжні згадки"' : ''}>`
+      + `${esc(label)}${n ? `<span class="sec__n${aside ? ' sec__n--aside' : ''}">${fmtCompact(n)}</span>` : ''}</button>`).join('');
   }
 
   /* ── картка ДПС ─────────────────────────────────────────────────── */
@@ -1677,6 +1691,9 @@
     return null;                       // актуальний — без позначки, як у практиці
   }
 
+  /** Відповідь саме про норму, а не така, що лише згадує її в тексті. */
+  function zirIsNamed(it) { return it.weight == null || it.weight >= 2; }
+
   function zirHTML(it, num) {
     const open = S.expanded.has('z' + it.zir_id);
     const mark = zirMark(it);
@@ -1684,7 +1701,7 @@
     const cite = `ЗІР ДПС, категорія ${it.cat_code}, «${(it.question || '').trim()}»`
       + (date ? `, ${it.status === 'expired' ? 'діяла до' : 'чинна станом на'} ${date}` : '');
     return `
-      <article class="zcard${open ? ' is-open' : ''}" data-zid="${esc(it.zir_id)}">
+      <article class="zcard${open ? ' is-open' : ''}${zirIsNamed(it) ? '' : ' zcard--aside'}" data-zid="${esc(it.zir_id)}">
         <div class="zcard__head">
           <span class="zcat" title="розділ ЗІР">${esc(it.cat_code)}${it.cat_name ? ' · ' + esc(it.cat_name) : ''}</span>
           ${date ? `<span class="zdate">${esc(date)}</span>` : ''}
@@ -1719,7 +1736,13 @@
         `Вітрина відповіла: ${esc(rec.error)}.`, null, 'retry');
       return;
     }
-    countEl.textContent = `${rec.found} коментар${rec.found === 1 ? '' : 'ів'} ДПС`;
+    // Дві різні речі, які не можна складати в одне число: відповіді про цю
+    // норму і відповіді, що лише згадують її в тексті.
+    const named = rec.named == null ? rec.found : rec.named;
+    const aside = Math.max(0, rec.found - named);
+    countEl.textContent = named
+      ? `${named} про норму${aside ? ` · ${aside} побіжно` : ''}`
+      : (aside ? `лише побіжні · ${aside}` : '0 коментарів ДПС');
 
     // Межа, без якої розділ уводить в оману. ЗІР — довідковий ресурс: захист
     // дає індивідуальна чи узагальнююча консультація (ст. 52–53 ПКУ), а не
@@ -1743,9 +1766,19 @@
         + `${label}${st[k] ? `<span class="sec__n">${st[k]}</span>` : ''}</button>`).join('');
     const more = `<div class="zchips">${chips}</div>`;
 
+    // Спершу відповіді про норму, далі — під окремим рядком — ті, що лише
+    // згадують її. Здебільшого це вступне «ПКУ регулює відносини… (п. 1.1
+    // ст. 1)» або визначення зі ст. 14 у тілі відповіді про зовсім інше.
+    const direct = rec.items.filter(zirIsNamed);
+    const casual = rec.items.filter(it => !zirIsNamed(it));
+    const split = casual.length
+      ? `<div class="zsplit" title="Норму названо лише в тілі відповіді; питання — про інше">${
+          direct.length ? 'Згадують побіжно' : 'Прямих відповідей про цю норму немає — лише побіжні згадки'
+        } <span class="sec__n">${casual.length}</span></div>` : '';
+
     listEl.innerHTML = note + unchecked + more
       + (rec.items.length
-          ? rec.items.map(it => zirHTML(it, num)).join('')
+          ? direct.map(it => zirHTML(it, num)).join('') + split + casual.map(it => zirHTML(it, num)).join('')
           : emptyHTML('Чинних роз’яснень немає',
               'ДПС не має такого коментаря, прив’язаного до цієї норми.', null));
   }
@@ -1797,6 +1830,29 @@
     return bits.join(', ');
   }
 
+  /* Посилання на HUDOC. У зрізі `url` є не в усіх справ: без нього — третина
+   * мостів, і серед них найцитованіші («Рисовський», «Кривенький», East/West
+   * Alliance). Панель малювала «HUDOC ↗» із порожнім href — клік вів на ту
+   * саму сторінку Ради, і виглядало це як «рішення не відкриваються».
+   * Коли адреси немає, ведемо в пошук HUDOC за номером заяви: він відкриває
+   * всі мовні версії справи, включно з українською, коли вона є. Номер,
+   * який на заяву не схожий («01/04» — уламок дати), у пошук не посилаємо. */
+  const HUDOC_APPNO = 'https://hudoc.echr.coe.int/eng#{"appno":["';
+  // справжній номер заяви: без нуля попереду, рік — дві цифри («29979/04»)
+  const APPNO_RE = /^[1-9]\d{0,5}\/\d{2}$/;
+
+  function ecLinkHTML(c) {
+    if (c.url) {
+      return `<a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">HUDOC ↗</a>`;
+    }
+    if (APPNO_RE.test(c.case_key || '')) {
+      return `<a href="${esc(HUDOC_APPNO + c.case_key + '"]}')}" target="_blank" rel="noopener noreferrer"
+                 title="Прямої адреси в зрізі немає — відкриється пошук HUDOC за номером заяви ${esc(c.case_key)}"
+              >знайти в HUDOC ↗</a>`;
+    }
+    return `<span class="eclink--none" title="У зрізі немає ні адреси HUDOC, ні номера заяви, за яким її можна знайти">без посилання</span>`;
+  }
+
   function ecCardHTML(c, num) {
     const open = S.expanded.has('e' + c.case_key);
     const rada = c.vru_nreg ? RADA + encodeURIComponent(c.vru_nreg) : null;
@@ -1813,7 +1869,7 @@
         <div class="ecard__ft">
           <button data-act="ec-docs"${c.docs ? '' : ' disabled'}>${
             c.docs ? `рішення ВС · ${c.docs}` : 'рішень ВС у зрізі немає'}</button>
-          <a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">HUDOC ↗</a>
+          ${ecLinkHTML(c)}
           ${rada ? `<a href="${esc(rada)}" target="_blank" rel="noopener noreferrer">переклад на Раді ↗</a>` : ''}
         </div>
         ${c.docs_corpus && c.docs_corpus > c.docs ? `<div class="ecblind">у корпусі
