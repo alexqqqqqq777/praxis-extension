@@ -143,10 +143,22 @@
         sub = m ? m[1] : null;
         continue;
       }
-      const m = /^pu([\d-]+):(?:pr_[\d-]+|rz\S+)$/.exec(tree);
+      // Дерево Ради подекуди вкладає пункт у попередній: п. 74-1 підрозд. 10
+      // розмічений як pu74-1:ch_1:pu74:pr_14, слідом так само 75 і 76; у
+      // розд. XX таких тринадцять. Для панелі вони зливалися з п. 74: юрист
+      // стояв на п. 74¹, а бачив підпис, практику й історію п. 74. Вкладений
+      // якір приймаємо, лише коли номер продовжує нумерацію підрозділу —
+      // інакше пунктом став би рядок «1.» з переліку всередині п. 5.
+      const m = /^pu([\d-]+):(.+:)?(?:pr_[\d-]+|rz[^:]*)$/.exec(tree);
       if (!m) continue;
       const head = new RegExp('^' + m[1].replace(/-/g, '\\-') + '\\.\\s*(.*)$', 's').exec(txt);
       if (!head) continue;                // якір є, а номера в тексті немає — не пункт
+      if (m[2]) {
+        const prev = out.length && out[out.length - 1].pp;
+        if (!prev || prev.roman !== roman || prev.sub !== sub) continue;
+        const k = numKey(m[1]), pk0 = numKey(prev.point);
+        if (!(k > pk0 && Math.floor(k) - Math.floor(pk0) <= 1)) continue;
+      }
       const num = `ПП.${roman}.${sub ? sub + '.' : ''}${m[1]}`;
       out.push({ num, title: head[1].trim().slice(0, 120), el: p, top: 0, height: 0,
                  pp: { roman, sub, point: m[1] } });
@@ -223,7 +235,9 @@
         // підпункті, який іде перед ними
         for (const a of el.querySelectorAll('a[data-tree]')) {
           const m = /(?:^|:)pp([\d.-]+):pu([\d-]+):(?:pr_[\d-]+|rz\S+)$/.exec(a.getAttribute('data-tree') || '');
-          if (m && m[2] === pp.point && m[1].includes('.')) { part = m[1]; break; }
+          // pp76.1:pu74:pr_14 — підпункт п. 76, який Рада вклала в п. 74 (див.
+          // collectArticles): свій він за номером, а не за якорем батька
+          if (m && m[1].includes('.') && (m[2] === pp.point || m[1].startsWith(pp.point + '.'))) { part = m[1]; break; }
         }
         if (part) out.push({ art: cur, part, el, top: 0 });
         continue;
@@ -1670,7 +1684,10 @@
     // він читає і податковий, і цивільний кодекс, і що саме йому звіряти —
     // не наша справа. Наша справа — сказати, що зміниться, і показати це.
     let banner = '';
-    const fut = rec.versions.find(v => v.future);
+    // Попереджаємо лише про редакцію, яка міняє текст, і про найближчу з
+    // таких (версії йдуть від найновіших). Редакція з тим самим текстом —
+    // закон-підстава зачепив сусідній пункт — тривоги не варта.
+    const fut = rec.versions.filter(v => v.future && !v.same_text && !v.redundant).pop();
     if (fut) {
       const n = (fut.changes || []).length;
       const what = n
@@ -1718,8 +1735,13 @@
     //
     // Чинну, майбутню й первинну не ховаємо ніколи: вони потрібні як опори,
     // навіть якщо самі по собі нічого не змінили.
-    const empty = v => !v.first && !v.current && !v.future
-      && (v.redundant || v.same_text || (!(v.changes || []).length && !v.diff_skipped));
+    //
+    // Майбутня — опора лише тоді, коли справді щось міняє. «Набирає чинності
+    // 31.10.2026» над редакцією з тим самим текстом — тривога ні про що:
+    // закон-підстава зачепив сусідній пункт, а не цей.
+    const sameish = v => v.redundant || v.same_text;
+    const empty = v => !v.first && !v.current && !(v.future && !sameish(v))
+      && (sameish(v) || (!(v.changes || []).length && !v.diff_skipped));
     const hidden = rec.versions.filter(v => empty(v) && !S.showRedundant);
     const shownVers = rec.versions.filter(v => !hidden.includes(v));
 
