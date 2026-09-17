@@ -57,11 +57,20 @@ TARGETS = {
 }
 # Четверта перевірка — не про мережу, а про те, ким запущено nginx.
 #
-# Сирота прожив на шлюзі сімнадцять днів: юніт `failed`, а процес живий, бо
-# його повз systemd підняв плагін nginx у certbot після невдалого reload.
-# Сайти при цьому відповідали, тож жодна перевірка «чи відкривається» цього
-# не бачила — і не побачить. Дивимося прямо: чи nginx під systemd.
-UNITS = {'nginx-unit': 'nginx.service'}
+# Сирота прожив на шлюзі сімнадцять днів: юніт `failed`, а процес живий, бо його
+# повз systemd підняв плагін nginx у certbot, поки чужий cron-скрипт тримав
+# nginx зупиненим. Сайти при цьому відповідали, тож жодна перевірка «чи
+# відкривається» цього не бачила — і не побачить.
+#
+# Питаємо не `systemctl is-active` (він каже про ЮНІТ), а `/proc/<pid>/cgroup`
+# майстра з pid-файла: у чиїй групі живе той nginx, що ЗАРАЗ віддає сайти.
+# Сирота відповість не «nginx.service», хоч би що показував юніт.
+#
+# Перша версія цієї перевірки кликала `systemctl` — і мовчки не працювала:
+# RestrictAddressFamilies у власному юніті проби забороняє AF_UNIX, тобто шину,
+# без якої systemctl не живе. Червоне, яке НІКОЛИ не може стати зеленим, гірше
+# за відсутність перевірки: воно виглядає як робота. Тут — лише /proc.
+UNITS = {'nginx-unit': '/run/nginx.pid'}
 TIMEOUT = 10
 DOWN_AFTER = 2          # невдач поспіль до сповіщення «впало»
 KEEP_DAYS = 30
@@ -127,15 +136,18 @@ def hit(url):
         return 0, int((time.monotonic() - t0) * 1000)
 
 
-def unit_active(name):
-    """(жива, мілісекунди). `is-active` прав не потребує — лише читання стану."""
+def unit_active(pid_file):
+    """(чи майстер у своєму юніті, мілісекунди). Читаємо /proc, прав не треба."""
     t0 = time.monotonic()
+    ok = False
     try:
-        r = subprocess.run(['systemctl', 'is-active', name],
-                           capture_output=True, text=True, timeout=TIMEOUT)
-        ok = r.stdout.strip() == 'active'
-    except Exception:                                          # noqa: BLE001
-        ok = False
+        with open(pid_file, encoding='ascii') as fh:
+            pid = int(fh.read().strip())
+        with open(f'/proc/{pid}/cgroup', encoding='utf-8') as fh:
+            ok = 'nginx.service' in fh.read()
+    except (OSError, ValueError):
+        ok = False          # немає pid-файла — nginx не працює зовсім,
+                            # і про це скажуть три перевірки вище
     return ok, int((time.monotonic() - t0) * 1000)
 
 
@@ -157,8 +169,8 @@ def once(conn):
         code, ms = hit(url)
         conn.execute('INSERT INTO samples VALUES(?,?,?,?)', (now, name, code, ms))
         seen[name] = (code == 200, code, ms)
-    for name, unit in UNITS.items():
-        ok, ms = unit_active(unit)
+    for name, where in UNITS.items():
+        ok, ms = unit_active(where)
         conn.execute('INSERT INTO samples VALUES(?,?,?,?)', (now, name, 200 if ok else 0, ms))
         seen[name] = (ok, 200 if ok else 0, ms)
 
@@ -247,7 +259,8 @@ def report(conn, days):
             print(f'\n{target}: {100 * b["ok"] / b["n"]:.1f}% часу під systemd '
                   f'({b["n"]} перевірок)' +
                   ('' if b['ok'] == b['n'] else
-                   ' — процес-сирота: reload на нього не діє, і підняти його systemd не підніме'))
+                   ' — решту часу сайти віддавав процес поза юнітом: reload на нього не діє,'
+                   ' і якщо він помре, systemd його не підніме'))
 
     # Головне питання, заради якого це й міряється.
     day = {t: pct(buckets.get((t, 'день'), {'ms': []})['ms'], 95) for t in ('adv', 'studio')}

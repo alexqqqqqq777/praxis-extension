@@ -2,25 +2,26 @@
 # Повернути nginx на шлюзі під systemd. Запускати тільки після слова власника:
 # за цим nginx не лише Praxis, а ще cam і live-translator.
 #
-# Що сталося. 01.09 о 03:01:58 UTC плагін nginx у certbot не зміг перезавантажити
-# nginx і підняв його САМ, повз systemd: `nginx -c /etc/nginx/nginx.conf`, батько
-# init. Через тринадцять секунд юніт упав — порт уже був зайнятий. Відтоді
-# сайти віддає процес-сирота, `systemctl reload` на нього не діє («Unit cannot be
-# reloaded because it is inactive»), а якщо він помре, ніхто його не підніме.
+# Що сталося 01.09, посекундно. О 03:00 UTC root-cron запустив ~/motion/renew-cert.sh —
+# він НАВМИСНО зупиняє nginx, щоб `standalone` узяв 80-й порт. Далі `certbot renew`
+# дійшов до сертифікатів bazhanka, плагін nginx побачив, що nginx не працює, і підняв
+# його сам: 03:01:58, `nginx -c /etc/nginx/nginx.conf`, батько init. О 03:02:11
+# `systemctl start nginx` уже не зміг — порт зайнятий, юніт failed.
 #
-# Плагін nginx потрібен рівно двом сертифікатам — bazhanka.com і api.bazhanka.com,
-# обидва прострочені, сайтів за ними немає. Поки їхні конфігурації лежать на
-# диску, сирота повертатиметься після будь-якої невдалої перезагрузки. Видалення
-# цих сертифікатів — рішення власника, і цей скрипт його не робить:
+# Тобто гачок — не «reload не вдався», а зупинка nginx чужим скриптом. Наступний
+# його запуск — 01.11 о 03:00 UTC. Якщо до того часу сертифікати bazhanka лежать
+# на диску, сирота повернеться гарантовано, хоч би що зробив цей скрипт.
+#
+# ТОМУ ПОРЯДОК ТАКИЙ, і він не косметичний:
 #
 #     sudo certbot delete --cert-name bazhanka.com
 #     sudo certbot delete --cert-name api.bazhanka.com
+#     sudo bash deploy/vps-adopt-nginx.sh
 #
-# Так само окремо — переведення 51-83-129-254.sslip.io (live-translator) зі
-# standalone на webroot: standalone вимагає вільного 80-го порту, який тримає
-# nginx, і саме такі оновлення закінчуються сюрпризами о третій ночі.
-#
-#     sudo certbot certonly --webroot -w /var/www/html -d 51-83-129-254.sslip.io
+# Переведення 51-83-129-254.sslip.io (live-translator) зі standalone на webroot —
+# окрема робота: той самий cron-скрипт спершу гасить nginx, а webroot без nginx
+# відповісти на виклик не може. Разом із ним переїжджає копіювання сертифіката в
+# контейнер камери. Робити лише після того, як власник подивиться хук і рядок cron.
 #
 # Простій — близько секунди, на всі сайти за цим nginx.
 #
@@ -40,6 +41,21 @@ probe() {                       # еталон «до» і «після»: ко�
     "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 'http://praxis.verity.icu/' 2>&1)"
 }
 
+wait_gone() {                   # $1 — скільки секунд чекати; 0 = лише перевірити
+  local i
+  for i in $(seq 1 $(( ${1:-0} * 2 ))); do
+    [ -n "$MASTER" ] && kill -0 "$MASTER" 2>/dev/null || return 0
+    sleep 0.5
+  done
+  [ -n "$MASTER" ] && kill -0 "$MASTER" 2>/dev/null && return 1
+  return 0
+}
+
+live_conns() {                  # скільки зараз живих TLS-з'єднань за цим nginx
+  ss -Htn state established '( sport = :443 or sport = :8443 or sport = :9443 )' \
+    2>/dev/null | wc -l
+}
+
 [ "$(id -u)" = 0 ] || { say 'потрібен root'; exit 1; }
 
 say '── 1. конфіг і стан «до» ─────────────────────────────────────'
@@ -48,18 +64,32 @@ MASTER=$(cat /run/nginx.pid 2>/dev/null || true)
 say "майстер за pid-файлом: ${MASTER:-немає}"
 say "юніт: $(systemctl is-active nginx) / $(systemctl is-failed nginx 2>/dev/null)"
 [ -n "$MASTER" ] && say "батько майстра: $(ps -o ppid= -p "$MASTER" 2>/dev/null | tr -d ' ')"
+say "живих з'єднань зараз: $(live_conns) — вирішує людина, а не скрипт:"
+say '  нуль означає, що ніхто не дивиться камеру й не йде переклад'
 probe
 
 if [ "$DRY" = '--dry-run' ]; then say $'\nсухий прогін: нічого не змінено'; exit 0; fi
 
 say $'\n── 2. сирота → systemd ───────────────────────────────────────'
+# Після `quit` дороги назад немає, є тільки вперед: слухаючі сокети закриваються
+# ОДРАЗУ, і всі три сайти вже не приймають нових з'єднань. Виходити тут зі
+# словами «стан не змінено» — неправда, і найгіршого штибу: сайти лежать, а
+# скрипт каже, що все як було.
+#
+# Майстер живе, доки воркери не віддадуть останнє з'єднання, а в конфігах є
+# WebSocket із `proxy_read_timeout 86400` і без `worker_shutdown_timeout`. Тобто
+# «зачекати» може означати добу. Тому: 10 с на добровільний вихід, далі TERM
+# (клієнти перепідключаться), і лише якщо не вийшов і після TERM — руки.
 nginx -s quit
-for _ in $(seq 1 30); do
-  [ -n "$MASTER" ] && kill -0 "$MASTER" 2>/dev/null || break
-  sleep 0.5
-done
-if [ -n "$MASTER" ] && kill -0 "$MASTER" 2>/dev/null; then
-  say 'майстер не вийшов за 15 с — зупиняюся, стан не змінено'; exit 1
+if ! wait_gone 10; then
+  say "довгі з'єднання не відпускають — завершую: TERM"
+  kill -TERM "$MASTER" 2>/dev/null
+  wait_gone 10 || true
+fi
+if ! wait_gone 0; then
+  say 'майстер не вийшов навіть після TERM. Новий nginx запускати НЕ МОЖНА:'
+  say 'старий, виходячи, зітре /run/nginx.pid — уже чужий. Далі вручну.'
+  exit 1
 fi
 systemctl reset-failed nginx
 systemctl start nginx
@@ -93,3 +123,6 @@ say 'з praxis…conf прибрано renew_hook — щоб не було дв�
 say $'\n── 4. перевірка ──────────────────────────────────────────────'
 certbot renew --dry-run 2>&1 | tail -20
 say $'\nготово. Проба зі шлюза тепер дивиться і на те, чи nginx під systemd.'
+if certbot certificates 2>/dev/null | grep -q 'bazhanka'; then
+  say 'УВАГА: сертифікати bazhanka ще на диску — 01.11 о 03:00 сирота повернеться.'
+fi
