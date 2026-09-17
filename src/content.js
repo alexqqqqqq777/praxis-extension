@@ -42,20 +42,26 @@
   // Ключ перехідних положень: ПП.XX.10.16-1 — розділ XX, підрозділ 10, п. 16-1
   // (те саме, що в корпусі: zir_refs.article, article_versions.article_key).
   // Без підрозділу — ПП.XIX.3 (прикінцеві положення, п. 3).
-  const PP_RE = /^ПП\.([IVXLC]+(?:-\d+)?)\.(?:(\d+(?:-\d+)?)\.)?(\d+(?:-\d+)?)$/;
+  const PP_RE = /^ПП\.([IVXLC]+(?:-\d+)?)\.(?:(\d+(?:-\d+)?)\.)?(\d+(?:-\d+)?)(?:~(\d+))?$/;
   const isPP = n => /^ПП\./.test(String(n || ''));
   const numKey = x => parseFloat(String(x).replace('-', '.')) || 0;
   // статті — як є; перехідні — далеко позаду, у порядку «підрозділ, пункт»
   const artKey = n => {
     const m = PP_RE.exec(String(n));
     if (!m) return numKey(n);
-    return 1e6 + numKey(m[2] || 0) * 1e3 + numKey(m[3]);
+    return 1e6 + numKey(m[2] || 0) * 1e3 + numKey(m[3]) + (m[4] ? m[4] * 1e-4 : 0);
   };
+  /** «…~2» — друга одиниця, надрукована в акті під тим самим номером. */
+  const DUP_RE = /^(.+)~(\d+)$/;
+  const dupWord = (i, fem) => ({ 2: fem ? 'друга' : 'другий', 3: fem ? 'третя' : 'третій' })[i] || `№ ${i}`;
   /** «Стаття 14» або «п. 16-1 підрозд. 10 розд. XX» — як юрист це називає. */
   const artLabel = n => {
     const m = PP_RE.exec(String(n));
-    if (!m) return `Стаття ${n}`;
-    return `п. ${m[3]}${m[2] ? ` підрозд. ${m[2]}` : ''} розд. ${m[1]}`;
+    if (!m) {
+      const d = DUP_RE.exec(String(n));
+      return d ? `Стаття ${d[1]} (${dupWord(+d[2], true)})` : `Стаття ${n}`;
+    }
+    return `п. ${m[3]}${m[4] ? ` (${dupWord(+m[4])})` : ''}${m[2] ? ` підрозд. ${m[2]}` : ''} розд. ${m[1]}`;
   };
 
   /** 843 → «843», 6145 → «6,1 тис.» — число в заголовку статті має бути коротким */
@@ -164,6 +170,17 @@
                  pp: { roman, sub, point: m[1] } });
     }
     for (let i = 0; i < out.length; i++) out[i].nextEl = out[i + 1] ? out[i + 1].el : null;
+    // Той самий номер, надрукований двічі: у ПКУ так стоять п. 71, 72, 74
+    // підрозд. 2 і п. 62 підрозд. 10 розд. XX. Запам'ятовуємо, котрий це з
+    // них за порядком, — ключ розведе adoptDupKeys(), коли його знатиме корпус.
+    const seen = new Map();
+    for (const a of out) {
+      const g = seen.get(a.num) || [];
+      g.push(a); seen.set(a.num, g);
+    }
+    for (const g of seen.values()) {
+      if (g.length > 1) g.forEach((a, i) => { a.dup = { i: i + 1, n: g.length, base: a.num }; });
+    }
     return out;
   }
 
@@ -205,6 +222,15 @@
   const arts = collectArticles();
   if (!arts.length) return;
   const byNum = new Map(arts.map(a => [a.num, a]));
+  // номери, під якими на сторінці стоїть більш як одна одиниця
+  const sharedNums = new Set();
+  const markShared = () => {
+    sharedNums.clear();
+    const c = new Map();
+    for (const a of arts) c.set(a.num, (c.get(a.num) || 0) + 1);
+    for (const [n, k] of c) if (k > 1) sharedNums.add(n);
+  };
+  markShared();
 
   /* Якорі окремих норм усередині статті.
      ЦКУ: pu1:st625 → частина «1». ПКУ: pp140.5:st140 → пункт «140.5».
@@ -263,6 +289,30 @@
   }
 
   const norms = collectNorms();
+
+  /** Розводить надруковані двічі одиниці за ключами корпусу.
+   *
+   *  Доки корпус тримає обидва п. 71 під одним ключем, панель теж: інакше
+   *  другий пункт питав би «ПП.XX.2.71~2», якого немає, і стояв порожній, а
+   *  перший показував би чужий текст уже без жодного попередження. Щойно
+   *  вітрина назве ключ «…~2» у dup_keys — другий надрукований бере його. */
+  function adoptDupKeys(known) {
+    if (!known || !known.size) return;
+    let changed = false;
+    for (const a of arts) {
+      if (!a.dup || a.dup.i < 2 || a.dup.adopted) continue;
+      const key = `${a.dup.base}~${a.dup.i}`;
+      if (!known.has(key)) continue;
+      a.num = key; a.dup.adopted = true; changed = true;
+      for (const b of arts) if (b.dup && b.dup.base === a.dup.base) b.dup.split = true;
+    }
+    if (!changed) return;
+    byNum.clear();
+    for (const a of arts) byNum.set(a.num, a);
+    markShared();
+    norms.length = 0;
+    norms.push(...collectNorms());
+  }
 
   function measure() {
     const sy = window.scrollY;
@@ -455,6 +505,7 @@
 
         <div class="secs" data-slot="secs" hidden></div>
         <div class="stale" data-slot="stale" hidden></div>
+        <div class="onmark onmark--warn dupnote" data-slot="dupnote" hidden></div>
       </div>
 
       <div class="list"></div>
@@ -566,6 +617,7 @@
         const d = await API.counts(ACT);
         S.answered = true;                 // вітрина відповіла — питання лише в даних
         if (d.since) DEPTH_SINCE = String(d.since);   // глибина зрізу для проміжків часу
+        adoptDupKeys(d.dupKeys);
         if (d.zir) for (const [num, pair] of d.zir) ZIR_COUNTS.set(num, pair);
         if (d.ecthr) for (const [num, n] of d.ecthr) ECTHR_COUNTS.set(num, n);
         if (d.articles && d.articles.size) {
@@ -1936,8 +1988,28 @@
       : 'Показати практику (Alt+P)';
   }
 
+  /** Номер, надрукований в акті двічі, — кажемо про це прямо. */
+  function renderDupNote(num) {
+    const el = $('[data-slot="dupnote"]');
+    if (!el) return;
+    const a = num && byNum.get(num);
+    const dup = a && a.dup;
+    if (!dup) { el.hidden = true; return; }
+    const unit = a.pp ? 'пункти' : 'статті';
+    const label = artLabel(dup.base);
+    el.hidden = false;
+    el.innerHTML = sharedNums.has(num)
+      ? `В акті під номером «${esc(label)}» надруковано ${dup.n === 2 ? 'два' : dup.n} ${unit} поспіль, `
+        + `а база поки тримає їх під одним ключем. Текст редакцій та історія тут — <b>останнього з них</b>; `
+        + `практика ВС і відповіді ДПС можуть стосуватися будь-якого. Звіряйте за змістом.`
+      : `В акті під номером «${esc(label)}» надруковано ${dup.n === 2 ? 'два' : dup.n} ${unit}; це `
+        + `<b>${dup.i === 1 ? (a.pp ? 'перший' : 'перша') : dupWord(dup.i, !a.pp)}</b>. Суди й ДПС пишуть номер без уточнення — `
+        + `перевіряйте за змістом, про котрий із них ідеться.`;
+  }
+
   function renderSecs(num) {
     renderStale();
+    renderDupNote(num);
     const el = $('[data-slot="secs"]');
     const secs = sections(num);
     // один розділ — перемикати нічого
@@ -3167,6 +3239,7 @@
 
   window.__PRAXIS__ = {
     S, arts, COUNTS, store, render, setOpen, measure, jumpTo, ensure,
-    setTheme: t => { S.theme = t; applyTheme(); }
+    setTheme: t => { S.theme = t; applyTheme(); },
+    adoptDupKeys
   };
 })();

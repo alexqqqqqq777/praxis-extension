@@ -127,7 +127,9 @@
         // показати — і кнопка не з'являлася в жодній статті. Маршрути я
         // перевіряв curl-ом, панель — ні, і дефект жив рівно в цьому
         // проміжку.
-        ecthr: new Map(Object.entries(d.ecthr || {}))
+        ecthr: new Map(Object.entries(d.ecthr || {})),
+        // ключі одиниць, надрукованих в акті двічі під одним номером («…~2»)
+        dupKeys: new Set(d.dup_keys || [])
       };
       cache.set(key, out);
       return out;

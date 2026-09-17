@@ -640,6 +640,8 @@
   background: var(--accent-bg); color: var(--accent-2);
   font-size: 12.5px; line-height: 1.5;
 }
+.dupnote { margin: 8px 0 0; font-size: 12px; }
+.dupnote[hidden] { display: none; }
 .onmark__btn {
   display: block; margin-top: 6px;
   border: 0; background: transparent; color: inherit;
