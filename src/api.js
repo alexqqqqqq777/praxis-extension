@@ -93,6 +93,8 @@
       status: c.status,                // overruled / overruled_gc / narrowed / affirmed
       overruledGc: c.overruled_gc,     // від висновку відступила саме Велика Палата
       note: c.authority_note,          // «Великою Палатою, справа 916/4093/21 від 2024-04-03»
+      basis: c.basis || null,          // чому неактуальне: хто відступив, де, абзац дослівно
+      questioned: c.questioned || 0,   // питання про відступ ставилося, але ніхто не відступив
       form: c.form,                    // 10 — окрема думка судді
       via: c.via || null,              // kind: 'formal' — посилання витягли окремим проходом;
                                        //       'context' — підпункт виведено з терміна поруч

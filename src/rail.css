@@ -456,6 +456,27 @@
   font-size: 10.5px; font-weight: 640; white-space: nowrap; cursor: help; }
 .card__head .mark { margin-left: auto; }
 
+/* чому неактуальне: хто відступив, де, абзац дослівно */
+.basis {
+  margin: 8px 0 10px; padding: 9px 11px; border-radius: 8px;
+  background: var(--danger-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--danger) 22%, transparent);
+  font-size: 12px; line-height: 1.45;
+}
+.basis__t { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--danger); margin-bottom: 4px; }
+.basis__who { color: var(--text); margin-bottom: 6px; }
+.basis__p {
+  margin: 0; padding: 6px 9px; border-left: 2px solid color-mix(in oklab, var(--danger) 45%, transparent);
+  background: var(--surface); color: var(--text-2); font-size: 11.5px; white-space: pre-line;
+}
+.basis__hit { background: color-mix(in oklab, var(--danger) 18%, transparent); color: inherit; padding: 0 2px; border-radius: 3px; }
+.basis__more { all: unset; cursor: pointer; font-size: 11px; color: var(--accent); margin-top: 4px; }
+.basis__more:hover { text-decoration: underline; }
+.basis__ft { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; }
+.basis__ft a { color: var(--text-2); }
+.basis__ft a:hover { color: var(--accent); }
+.basis__sec { color: var(--text-3); }
+
 .card__flags {
   display: flex; flex-wrap: wrap; gap: 5px;
   margin-top: 10px; padding-top: 9px;

@@ -868,10 +868,13 @@
       };
     }
     if (it.negative || it.status === 'overruled' || it.status === 'narrowed') {
+      const narrowed = it.status === 'narrowed';
       return {
-        cls: 'neg', label: `неактуальне${it.negative ? ' · ' + it.negative : ''}`,
-        title: `Від висновку цієї справи відступили пізніші рішення ВС`
-          + `${it.negative ? ` — ${esc(it.negative)} раз` : ''}. Посилатися як на чинну позицію ризиковано.`
+        cls: 'neg', label: narrowed ? 'конкретизовано' : `неактуальне${it.negative ? ' · ' + it.negative : ''}`,
+        title: (narrowed
+            ? 'Пізніша практика ВС конкретизувала (звузила) висновок цієї справи. Посилатися на нього без застережень ризиковано.'
+            : `Від висновку цієї справи відступили пізніші рішення ВС`
+              + `${it.negative ? ` — ${esc(it.negative)} раз` : ''}. Посилатися як на чинну позицію ризиковано.`)
           + (it.note ? ' ' + it.note : '')
       };
     }
@@ -893,6 +896,75 @@
     return null;
   }
 
+  /* ── чому неактуальне ─────────────────────────────────────────────
+   *
+   *  Позначка без підстави — це «повірте на слово». Корпус тепер дає для
+   *  кожного негативного статусу абзац, у якому відступили, і каже, ХТО це
+   *  зробив. Дві різні ситуації, і плутати їх не можна:
+   *    reported = 0 — джерело саме відступило («Велика Палата відступає…»);
+   *    reported = 1 — джерело лише ПЕРЕКАЗУЄ чужий відступ («ВП у справі № N
+   *                   відступила…»); саме рішення, що відступило, у зрізі
+   *                   може бути відсутнє. Підпис має казати саме це.
+   */
+  function basisWho(b) {
+    const verb = b.treatment === 'narrowed'
+      ? (b.is_gc ? 'конкретизувала' : 'конкретизував')
+      : (b.is_gc ? 'відступила' : 'відступив');
+    const src = `у постанові ${b.src_court ? esc(b.src_court) + ' ' : ''}від ${fmtDate(b.src_date)} у справі № ${esc(b.src_cause || '—')}`;
+    if (!b.reported) {
+      return `${b.is_gc ? 'Велика Палата' : 'Верховний Суд'} ${src} ${verb} від цього висновку.`;
+    }
+    const actor = b.actor_cause
+      ? ` ${b.is_gc ? 'Велика Палата' : 'Верховний Суд'} у справі № ${esc(b.actor_cause)}${
+          b.actor_date ? ` від ${fmtDate(b.actor_date)}` : ''}${b.treatment === 'narrowed' ? ' конкретизувала' : ' відступила'} від цього висновку`
+      : ` хто саме відступив, у переказі не названо`;
+    return `<b>Про відступ сказано в переказі</b> — ${src}:${actor}. `
+      + `Саме рішення, що відступило, тут не показане — перевірте за абзацом.`;
+  }
+
+  /** Абзац із підсвіченим реченням про відступ; довгий — вікном навколо нього. */
+  function basisParagraphHTML(b) {
+    const p = b.paragraph || '';
+    const bits = (b.raw || '').replace(/^…\s*/, '').split(/\s*…\s*/).map(x => x.trim()).filter(x => x.length > 12);
+    let hit = -1, hitLen = 0;
+    for (const bit of bits) {
+      const i = p.indexOf(bit);
+      if (i >= 0) { hit = i; hitLen = bit.length; break; }
+    }
+    const mark = (txt, from) => {
+      // підсвічуємо лише перший знайдений фрагмент; решта «…» лишається текстом
+      if (hit < 0 || hit < from || hit >= from + txt.length) return esc(txt);
+      const a = hit - from;
+      return esc(txt.slice(0, a)) + '<mark class="basis__hit">' + esc(txt.slice(a, a + hitLen)) + '</mark>' + esc(txt.slice(a + hitLen));
+    };
+    const LONG = 700;
+    if (p.length <= LONG) return `<blockquote class="basis__p">${mark(p, 0)}</blockquote>`;
+    // вікно: від початку речення перед збігом до кінця речення після нього
+    let from = Math.max(0, (hit >= 0 ? hit : 0) - 220);
+    const sent = p.lastIndexOf('. ', from); if (sent > 0 && from - sent < 160) from = sent + 2;
+    let to = Math.min(p.length, (hit >= 0 ? hit + hitLen : from) + 420);
+    const end = p.indexOf('. ', to); if (end > 0 && end - to < 200) to = end + 1;
+    const win = p.slice(from, to);
+    return `<blockquote class="basis__p" data-full="${esc(p)}">${from ? '… ' : ''}${mark(win, from)}${to < p.length ? ' …' : ''}</blockquote>
+      <button class="basis__more" data-act="basis-full">весь абзац</button>`;
+  }
+
+  function basisHTML(it) {
+    const b = it.basis;
+    if (!b) return '';
+    const sec = { position: 'мотиви суду', opinion: 'окрема думка', arguments: 'доводи сторін' }[b.section] || '';
+    return `<div class="basis" data-slot="basis">
+      <div class="basis__t">Чому ${it.status === 'narrowed' ? 'конкретизовано' : 'неактуальне'}</div>
+      <div class="basis__who">${basisWho(b)}</div>
+      ${basisParagraphHTML(b)}
+      <div class="basis__ft">
+        ${sec ? `<span class="basis__sec">${esc(sec)}</span>` : ''}
+        ${b.src_url ? `<a href="${esc(b.src_url)}" target="_blank" rel="noopener noreferrer">постанова, де про це сказано, в ЄДРСР ↗</a>` : ''}
+        ${b.reported && b.actor_url ? `<a href="${esc(b.actor_url)}" target="_blank" rel="noopener noreferrer">рішення, що відступило ↗</a>` : ''}
+      </div>
+    </div>`;
+  }
+
   /** Повний розклад — у розгорнутій картці, де є місце пояснити. */
   function statusLines(it) {
     const out = [];
@@ -903,6 +975,11 @@
     if (it.law && it.law.stale) out.push(['stale', `рішення про редакцію статті від ${fmtDate(it.law.valid_from)}`]);
     if (it.kind === 'departure') out.push(['chg', 'саме відступило від попереднього висновку']);
     if (it.affirmed) out.push(['ok', `висновок підтверджено: ${esc(it.affirmed)}`]);
+    // м'який сигнал, не червоний: хтось (сторона, колегія, мотив передачі
+    // справи) ставив питання про відступ — але ніхто не відступив
+    if (it.questioned && !it.negative && it.status !== 'overruled' && it.status !== 'overruled_gc' && it.status !== 'narrowed') {
+      out.push(['note', `питання про відступ від цього висновку ставилося (${it.questioned}), відступу не було`]);
+    }
     return out;
   }
 
@@ -953,11 +1030,15 @@
           ${(st => !st ? '' : st.goHistory
               ? `<button class="${st.cls} mark mark--go" data-act="to-history" data-on="${esc(st.goHistory)}"`
                 + ` title="${esc(st.title)} Натисніть, щоб побачити редакцію, чинну на дату рішення.">${esc(st.label)}</button>`
-              : `<span class="${st.cls} mark" title="${esc(st.title)}">${esc(st.label)}</span>`)(statusOf(it))}
+              : st.cls === 'neg' && it.basis
+                ? `<button class="${st.cls} mark mark--go" data-act="why"`
+                  + ` title="${esc(st.title)} Натисніть — чому: хто відступив і в якому абзаці.">${esc(st.label)} · чому</button>`
+                : `<span class="${st.cls} mark" title="${esc(st.title)}">${esc(st.label)}</span>`)(statusOf(it))}
         </div>
         <div class="card__case">справа № ${esc(it.caseNo)}</div>
         <p class="card__thesis">${thesis}</p>
         <div class="card__more"><div class="card__more-in">
+          ${basisHTML(it)}
           ${it.full.map(p => `<p>${esc(p)}</p>`).join('')}
           ${(ls => ls.length ? `<div class="card__flags">` + ls.map(([c, t]) =>
               `<span class="${c} mark">${esc(t)}</span>`).join('') + `</div>` : '')(statusLines(it))}
@@ -2483,6 +2564,21 @@
         const pool = withPractice.filter(n => a === 'prev' ? artKey(n) < key : artKey(n) > key);
         const target = a === 'prev' ? pool[pool.length - 1] : pool[0];
         if (target) jumpTo(target);
+        return;
+      }
+      if (card && a === 'why') {
+        // розгорнути картку й показати підставу — саме її, а не початок
+        e.stopPropagation();
+        S.expanded.add(card.dataset.id);
+        card.classList.add('is-open');
+        const b = card.querySelector('[data-slot="basis"]');
+        if (b) setTimeout(() => b.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
+        return;
+      }
+      if (a === 'basis-full') {
+        e.stopPropagation();
+        const q = act.previousElementSibling;
+        if (q && q.dataset.full) { q.textContent = q.dataset.full; act.remove(); }
         return;
       }
       if (card && (a === 'copy' || a === 'ext' || a === 'goto')) {
