@@ -295,7 +295,20 @@ def make_handler(core, token: str, origins: list[str], workers: int = 4):
                         flag=[x for x in csv('flag') if x in ('departure', 'actual')],
                         cat=arg('cat') or None))
 
-                self._send(404, {'error': 'not found'})
+                # Корінь — не помилка, а місце, куди люди приходять руками.
+                #
+                # Власник відкрив адресу вітрини у вкладці, щоб перевірити ключ,
+                # і побачив «not found». Виглядає як поломка, а насправді це
+                # означало протилежне: ключ прийнято (без ключа тут «need key»).
+                # Півхвилини здогадок — і рівно нуль користі.
+                if u.path in ('', '/'):
+                    return self._send(200, {
+                        'praxis': 'вітрина: API для розширення, сторінок тут немає',
+                        'key': 'прийнято',
+                        'health': '/health',
+                        'docs': 'https://github.com/alexqqqqqq777/praxis-extension'})
+
+                self._send(404, {'error': 'not found', 'path': u.path})
             except Exception as e:                            # noqa: BLE001
                 # Клієнтові — лише тип помилки. Текст SQLite містив назви
                 # стовпців і уривки запиту; це не приватність користувача, але
