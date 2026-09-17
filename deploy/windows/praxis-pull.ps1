@@ -93,6 +93,20 @@ if ($Install) {
     try { $h = Invoke-RestMethod -Uri $u -TimeoutSec 30; $alive = $u
           Say ("служба відповіла на " + $u + ": " + ($h | ConvertTo-Json -Compress)); break } catch { }
   }
+  if ($alive) {
+    # Прогрів. Перший запит до свіжої бази коштує секунди: відкрити файл на
+    # 7,5 ГБ і зібрати лічильники на цілий кодекс. Дістається це тому, хто
+    # відкрив закон першим уранці, — тобто юристові. Гріємо самі.
+    #
+    # Заміряно на запасному вузлі: перше звернення після перезапуску — 5,3 с,
+    # далі 0,18 с.
+    $base = ($alive -replace '/health$', '')
+    foreach ($act in @('435-15', '2755-17', '1618-15', '2747-15')) {
+      try { Invoke-RestMethod -Uri "$base/articles?act=$act" -TimeoutSec 120 | Out-Null } catch { }
+    }
+    Say "прогріто: ЦК, ПКУ, ЦПК, КАС"
+  }
+
   if (-not $alive) {
     Say "УВАГА: /health не відповів ні на одній адресі — повертаю попередню базу"
     Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue

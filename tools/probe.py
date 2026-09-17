@@ -55,6 +55,13 @@ TARGETS = {
     'adv':    'http://100.70.93.113:8788/health',
     'studio': 'http://100.118.205.24:8788/health',
 }
+# Четверта перевірка — не про мережу, а про те, ким запущено nginx.
+#
+# Сирота прожив на шлюзі сімнадцять днів: юніт `failed`, а процес живий, бо
+# його повз systemd підняв плагін nginx у certbot після невдалого reload.
+# Сайти при цьому відповідали, тож жодна перевірка «чи відкривається» цього
+# не бачила — і не побачить. Дивимося прямо: чи nginx під systemd.
+UNITS = {'nginx-unit': 'nginx.service'}
 TIMEOUT = 10
 DOWN_AFTER = 2          # невдач поспіль до сповіщення «впало»
 KEEP_DAYS = 30
@@ -120,6 +127,18 @@ def hit(url):
         return 0, int((time.monotonic() - t0) * 1000)
 
 
+def unit_active(name):
+    """(жива, мілісекунди). `is-active` прав не потребує — лише читання стану."""
+    t0 = time.monotonic()
+    try:
+        r = subprocess.run(['systemctl', 'is-active', name],
+                           capture_output=True, text=True, timeout=TIMEOUT)
+        ok = r.stdout.strip() == 'active'
+    except Exception:                                          # noqa: BLE001
+        ok = False
+    return ok, int((time.monotonic() - t0) * 1000)
+
+
 def notify(text):
     cmd = os.environ.get('PRAXIS_NOTIFY', '').strip()
     print(text, file=sys.stderr)
@@ -138,6 +157,10 @@ def once(conn):
         code, ms = hit(url)
         conn.execute('INSERT INTO samples VALUES(?,?,?,?)', (now, name, code, ms))
         seen[name] = (code == 200, code, ms)
+    for name, unit in UNITS.items():
+        ok, ms = unit_active(unit)
+        conn.execute('INSERT INTO samples VALUES(?,?,?,?)', (now, name, 200 if ok else 0, ms))
+        seen[name] = (ok, 200 if ok else 0, ms)
 
     prev = {r[0]: (r[1], r[2], r[3])
             for r in conn.execute('SELECT target, up, fails, since FROM state')}
@@ -165,8 +188,13 @@ def once(conn):
 def _line(name, up, seen):
     """Сповіщення однією фразою — із контекстом, а не «щось не так»."""
     who = {'public': 'вітрина (публічна адреса)', 'adv': 'основний вузол adv',
-           'studio': 'запасний вузол Studio'}[name]
-    head = f'{who}: {"піднялось" if up else "ЛЕЖИТЬ"}'
+           'studio': 'запасний вузол Studio',
+           'nginx-unit': 'nginx під systemd'}[name]
+    if name == 'nginx-unit':
+        head = who + (': знову під systemd' if up else
+                      ': НЕ під systemd — процес-сирота, reload на нього не діє')
+    else:
+        head = f'{who}: {"піднялось" if up else "ЛЕЖИТЬ"}'
     others = []
     for k in ('public', 'adv', 'studio'):
         if k == name:
@@ -213,6 +241,14 @@ def report(conn, days):
             print(f'{target:<8} {part:<6} {b["n"]:>8} {100 * b["ok"] / b["n"]:>6.1f}% '
                   f'{pct(b["ms"], 50) or 0:>6} {pct(b["ms"], 95) or 0:>6} '
                   f'{max(b["ms"]) if b["ms"] else 0:>6}')
+    for target in UNITS:
+        b = buckets.get((target, 'доба'))
+        if b:
+            print(f'\n{target}: {100 * b["ok"] / b["n"]:.1f}% часу під systemd '
+                  f'({b["n"]} перевірок)' +
+                  ('' if b['ok'] == b['n'] else
+                   ' — процес-сирота: reload на нього не діє, і підняти його systemd не підніме'))
+
     # Головне питання, заради якого це й міряється.
     day = {t: pct(buckets.get((t, 'день'), {'ms': []})['ms'], 95) for t in ('adv', 'studio')}
     if day['adv'] and day['studio']:
