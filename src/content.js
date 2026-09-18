@@ -789,7 +789,7 @@
         title="Роз'яснень ДПС (ЗІР) про цю ${a.pp ? 'норму' : 'статтю'}: ${fmtNum(named)}${
           aside ? `, ще ${fmtNum(aside)} згадують її побіжно` : ''}${
           z[1] ? ` · чинних серед усіх: ${fmtNum(z[1])}` : ''} · клік — розділ ДПС">
-        ДПС · ${fmtCompact(named)}</span>`);
+        <span class="praxis-badge__dot"></span>ДПС · ${fmtCompact(named)}</span>`);
     if (a.pp) {
       // пункт перехідних положень — це абзац на пів екрана; бейдж наприкінці
       // ніхто не побачить, тож ставимо перед номером
@@ -897,7 +897,7 @@
           title="Роз'яснень ДПС (ЗІР) про цю норму: ${fmtNum(named)}${
             aside ? `, ще ${fmtNum(aside)} згадують її побіжно` : ''}${
             z[1] ? ` · чинних серед усіх: ${fmtNum(z[1])}` : ''} · клік — показати">
-          ДПС · ${fmtCompact(named)}</span>`);
+          <span class="praxis-badge__dot"></span>ДПС · ${fmtCompact(named)}</span>`);
       if (isPPart) {
         // підпункт перехідних положень — абзац на пів екрана: бейдж перед номером
         n.el.insertBefore(document.createTextNode(' '), n.el.firstChild);
@@ -935,7 +935,7 @@
           role="button" tabindex="0"
           title="Статтю змінювали: ${n} редакці${n < 5 ? 'ї' : 'й'}.${fut
             ? ` З ${fmtDate(fut)} набирає чинності нова редакція.` : ''} Клік — історія змін і текст на будь-яку дату.">
-          ред. ${n}${fut ? ' ⚠' : ''}</span>`);
+          <span class="praxis-badge__dot"></span>ред. ${n}${fut ? ' ⚠' : ''}</span>`);
       art.el.appendChild(document.createTextNode(' '));
       art.el.appendChild(b);
       art.histBadge = b;
