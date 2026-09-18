@@ -2644,7 +2644,12 @@
       listEl.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    if (so) { S.sort = so.dataset.s; refetch(); return; }
+    // data-s ділять чипи сортування практики ВС і чипи стану ЗІР (актуальні/
+    // історичні/неактуальні). Перші без data-act, другі — data-act="zir-state".
+    // Без цього винятку клік по «історичні»/«неактуальні» перехоплювався як
+    // зміна сортування й мовчки нічого не робив: історичні й неактуальні
+    // коментарі ДПС не показувалися взагалі.
+    if (so && so.dataset.act !== 'zir-state') { S.sort = so.dataset.s; refetch(); return; }
     if (drop) {
       const [k, v] = drop.dataset.drop.split(':');
       if (k === 'court') S.courts = S.courts.filter(x => x !== v);
