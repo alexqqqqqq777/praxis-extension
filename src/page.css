@@ -69,6 +69,10 @@ html.praxis-on #article { position: relative; }
   font-variant-numeric: tabular-nums;
   letter-spacing: .01em;
   vertical-align: 2px;
+  /* Бейджі норм стоять усередині абзаців Ради, а ті мають text-indent (абзацний
+     відступ ~33px). Успадкований, він відсував напис на 33px від крапки —
+     крапка «відліплювалася». Гасимо тут, щоб крапка була впритул скрізь. */
+  text-indent: 0;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
